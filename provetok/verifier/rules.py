@@ -91,10 +91,10 @@ class RuleConfig:
 class VerificationRule(ABC):
     """验证规则基类"""
 
-    def __init__(self, rule_id: str, issue_type: IssueType, default_severity: int = 2):
+    def __init__(self, rule_id: str, issue_type: IssueType, default_severity: int = 2, severity: int = None):
         self.rule_id = rule_id
         self.issue_type = issue_type
-        self.default_severity = default_severity
+        self.default_severity = severity if severity is not None else default_severity
         self.config = RuleConfig()
 
     @abstractmethod

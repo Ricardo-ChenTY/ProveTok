@@ -159,7 +159,7 @@ class RefusalCalibrator:
         for gen, gt_frames, issues in zip(generations, ground_truths, issues_list):
             # 统计 unsupported issues
             for issue in issues:
-                if "unsupported" in issue.issue_type.name.lower():
+                if "unsupported" in issue.issue_type.lower():
                     unsupported_count += 1
 
             for idx, frame in enumerate(gen.frames):

@@ -172,20 +172,16 @@ def compute_delta(
     issue_reduction_total = 0.0
 
     # 统计当前各类型 issue 数量
-    issue_counts = {it: 0 for it in IssueType}
+    ISSUE_TYPE_LIST = ["U1_unsupported", "O1_overclaim", "I1_inconsistency", "M1_missing_slot"]
+    issue_counts = {it: 0.0 for it in ISSUE_TYPE_LIST}
     for issue in current_issues:
-        issue_counts[issue.issue_type] += SEVERITY_WEIGHTS.get(issue.severity, 0.5)
+        if issue.issue_type in issue_counts:
+            issue_counts[issue.issue_type] += SEVERITY_WEIGHTS.get(issue.severity, 0.5)
 
     # issue_pred: [U1, O1, I1, M1] 的预测减少量
     issue_pred_np = issue_pred.detach().cpu().numpy()
-    issue_type_map = [
-        IssueType.U1_unsupported,
-        IssueType.O1_overclaim,
-        IssueType.I1_inconsistency,
-        IssueType.M1_missing_slot,
-    ]
 
-    for i, it in enumerate(issue_type_map):
+    for i, it in enumerate(ISSUE_TYPE_LIST):
         # 预测的减少量 * 当前该类型 issue 的加权数量
         issue_reduction_total += issue_pred_np[i] * issue_counts[it]
 

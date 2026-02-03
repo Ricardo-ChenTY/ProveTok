@@ -9,3 +9,12 @@ from .encoder3d import (
 )
 from .pcg_head import PCGHead
 from .system import ProveTokSystem
+from .llm_backend import (
+    BaseLLMBackend,
+    DummyLLM,
+    HuggingFaceLLM,
+    TokenProjector,
+    LLMOutput,
+    create_llm_backend,
+    list_available_llm_backends,
+)

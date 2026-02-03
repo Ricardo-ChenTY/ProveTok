@@ -4,3 +4,12 @@ pydantic>=2.6
 typer>=0.9
 rich>=13.7
 PyYAML>=6.0
+
+# --- LLM Backend (M3 阶段需要) ---
+transformers>=4.36
+accelerate>=0.25
+# bitsandbytes>=0.41     # 4-bit/8-bit 量化, Windows 需要特殊版本
+
+# --- 真实数据加载 (可选) ---
+# nibabel>=5.0           # NIfTI 文件读取
+# monai>=1.3             # 医学影像工具
