@@ -39,7 +39,9 @@ class NLIResult:
 def frame_to_claim(frame: Frame) -> str:
     """将 Frame 转换为 claim 文本"""
     polarity_map = {
+        "present": "There is",
         "positive": "There is",
+        "absent": "There is no",
         "negative": "There is no",
     }
 
@@ -72,19 +74,19 @@ def tokens_to_evidence(tokens: List[Token], volume_shape: Tuple[int, int, int] =
     # 解析 cell 位置
     locations = []
     for t in tokens:
-        try:
-            cell_id = t.cell_id
-            coord_part = cell_id.split(":")[1].strip("()")
-            coords = [int(x) for x in coord_part.split(",")]
-            # 简化位置描述
-            if coords[0] == 0 and t.level == 0:
-                locations.append("whole volume")
-            elif coords[0] % 2 == 0:
-                locations.append("left region")
-            else:
-                locations.append("right region")
-        except:
+        from ..grid.cells import parse_cell_id
+
+        cell = parse_cell_id(t.cell_id)
+        if cell is None:
             locations.append("unknown region")
+            continue
+        # 简化位置描述（仅用于 NLI scaffold）
+        if cell.ix == 0 and t.level == 0:
+            locations.append("whole volume")
+        elif cell.ix % 2 == 0:
+            locations.append("left region")
+        else:
+            locations.append("right region")
 
     # 生成描述
     parts = []

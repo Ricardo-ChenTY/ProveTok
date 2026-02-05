@@ -13,12 +13,42 @@
 - evidence_trace: 详细证据信息
 """
 from __future__ import annotations
-from typing import List, Dict, Set, Tuple, Optional, Callable
+from typing import Any, List, Dict, Set, Tuple, Optional, Callable
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 import numpy as np
+import torch
 
 from ..types import Issue, Token, Generation, Frame, IssueType
+from .taxonomy import RULE_SET_VERSION
+
+
+def build_evidence_trace(
+    token_ids: List[int],
+    token_map: Dict[int, Token],
+    *,
+    rule_inputs: Optional[Dict[str, Any]] = None,
+    rule_outputs: Optional[Dict[str, Any]] = None,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build a minimal, auditable evidence_trace schema.
+
+    Locked keys:
+    - token_ids: cited token ids
+    - token_cell_ids: cited cell_id list (same order as token_ids when possible)
+    - rule_inputs: deterministic rule parameters / thresholds
+    - rule_outputs: deterministic intermediate values used by the rule
+    """
+    token_cell_ids = [token_map[tid].cell_id for tid in token_ids if tid in token_map]
+    trace: Dict[str, Any] = {
+        "token_ids": list(token_ids),
+        "token_cell_ids": token_cell_ids,
+        "rule_inputs": rule_inputs or {},
+        "rule_outputs": rule_outputs or {},
+    }
+    if extra:
+        trace.update(extra)
+    return trace
 
 
 # ============================================================
@@ -141,13 +171,18 @@ class U1_NoCitation(VerificationRule):
         if generation.refusal.get(frame_idx, False):
             return None
 
-        if frame.polarity == "positive":
+        if frame.polarity in ("present", "positive"):
             citations = generation.citations.get(frame_idx, [])
             if not citations:
                 return self._make_issue(
                     frame_idx=frame_idx,
                     message="Positive claim without any citations.",
-                    evidence_trace={"citations": [], "cell_ids": []},
+                    evidence_trace=build_evidence_trace(
+                        [],
+                        token_map,
+                        rule_inputs={},
+                        rule_outputs={},
+                    ),
                 )
         return None
 
@@ -163,7 +198,7 @@ class U1_LowScore(VerificationRule):
         if generation.refusal.get(frame_idx, False):
             return None
 
-        if frame.polarity != "positive":
+        if frame.polarity not in ("present", "positive"):
             return None
 
         citations = generation.citations.get(frame_idx, [])
@@ -177,13 +212,13 @@ class U1_LowScore(VerificationRule):
             return self._make_issue(
                 frame_idx=frame_idx,
                 message=f"Cited evidence has low support score (max={max(scores):.3f} < {self.min_score}).",
-                evidence_trace={
-                    "citations": citations,
-                    "cell_ids": cell_ids,
-                    "scores": scores,
-                    "max_score": max(scores),
-                    "threshold": self.min_score,
-                },
+                evidence_trace=build_evidence_trace(
+                    citations,
+                    token_map,
+                    rule_inputs={"min_score": self.min_score},
+                    rule_outputs={"scores": scores, "max_score": max(scores) if scores else None},
+                    extra={"cell_ids": cell_ids},
+                ),
             )
         return None
 
@@ -199,7 +234,7 @@ class U1_HighUncertainty(VerificationRule):
         if generation.refusal.get(frame_idx, False):
             return None
 
-        if frame.polarity != "positive":
+        if frame.polarity not in ("present", "positive"):
             return None
 
         citations = generation.citations.get(frame_idx, [])
@@ -212,12 +247,12 @@ class U1_HighUncertainty(VerificationRule):
             return self._make_issue(
                 frame_idx=frame_idx,
                 message=f"Cited evidence has high uncertainty (min={min(uncertainties):.3f} > {self.max_uncertainty}).",
-                evidence_trace={
-                    "citations": citations,
-                    "uncertainties": uncertainties,
-                    "min_uncertainty": min(uncertainties),
-                    "threshold": self.max_uncertainty,
-                },
+                evidence_trace=build_evidence_trace(
+                    citations,
+                    token_map,
+                    rule_inputs={"max_uncertainty": self.max_uncertainty},
+                    rule_outputs={"uncertainties": uncertainties, "min_uncertainty": min(uncertainties) if uncertainties else None},
+                ),
             )
         return None
 
@@ -233,7 +268,7 @@ class U1_InsufficientCoverage(VerificationRule):
         if generation.refusal.get(frame_idx, False):
             return None
 
-        if frame.polarity != "positive":
+        if frame.polarity not in ("present", "positive"):
             return None
 
         citations = generation.citations.get(frame_idx, [])
@@ -253,15 +288,119 @@ class U1_InsufficientCoverage(VerificationRule):
             return self._make_issue(
                 frame_idx=frame_idx,
                 message=f"Cited evidence covers insufficient volume (coverage={coverage:.3f}).",
-                evidence_trace={
-                    "citations": citations,
-                    "levels": cited_levels,
-                    "coverage": coverage,
-                    "threshold": self.min_coverage_ratio,
-                },
+                evidence_trace=build_evidence_trace(
+                    citations,
+                    token_map,
+                    rule_inputs={"min_coverage_ratio": self.min_coverage_ratio},
+                    rule_outputs={"levels": cited_levels, "coverage": coverage},
+                ),
                 severity=1,
             )
         return None
+
+
+class U1_CitationRelevance(VerificationRule):
+    """Citations should be relevant to the claim (ToyPCG-style attention proxy).
+
+    This is a deterministic, auditable proxy rule:
+    - Build a query vector from `frame.finding`
+    - Compute attention over evidence-token embeddings (optionally score-biased)
+    - If cited tokens are not among the top-K for that claim, flag as unsupported
+
+    Notes:
+    - Designed to make `cite_swap` counterfactual detectable.
+    - When embeddings are unavailable/non-tensor, this rule is skipped.
+    """
+
+    def __init__(
+        self,
+        *,
+        min_recall_at_k: float = 0.5,
+        min_attention_mass: float = 0.2,
+        query_seed: int = 0,
+        score_bias: float = 0.0,
+    ):
+        super().__init__("U1.4", "U1_unsupported", severity=2)
+        self.min_recall_at_k = float(min_recall_at_k)
+        self.min_attention_mass = float(min_attention_mass)
+        self.query_seed = int(query_seed)
+        self.score_bias = float(score_bias)
+
+    def check(self, frame_idx, frame, generation, tokens, token_map):
+        if generation.refusal.get(frame_idx, False):
+            return None
+
+        if frame.polarity not in ("present", "positive"):
+            return None
+
+        citations = generation.citations.get(frame_idx, [])
+        if not citations:
+            return None
+
+        if not tokens:
+            return None
+
+        # Build embedding matrix (N,D).
+        rows: List[torch.Tensor] = []
+        scores: List[float] = []
+        token_id_to_row: Dict[int, int] = {}
+        for row, t in enumerate(tokens):
+            if not isinstance(t.embedding, torch.Tensor) or t.embedding.dim() != 1:
+                return None
+            rows.append(t.embedding.to(dtype=torch.float32))
+            scores.append(float(t.score))
+            token_id_to_row[int(t.token_id)] = row
+
+        if not rows:
+            return None
+
+        T = torch.stack(rows, dim=0)  # (N,D)
+        score_vec = torch.tensor(scores, dtype=T.dtype, device=T.device)
+
+        from ..pcg.toy_queries import toy_query_vector
+
+        q = toy_query_vector(frame.finding, emb_dim=int(T.shape[1]), seed=self.query_seed, device=T.device, dtype=T.dtype)
+        logits = (T @ q)  # (N,)
+        if self.score_bias != 0.0:
+            logits = logits + self.score_bias * score_vec
+        att = torch.softmax(logits, dim=0)
+
+        cited_rows = [token_id_to_row[int(tid)] for tid in citations if int(tid) in token_id_to_row]
+        if not cited_rows:
+            return None
+
+        k = min(max(len(cited_rows), 1), int(att.numel()))
+        topk_rows = torch.topk(att, k=k).indices.tolist()
+
+        cited_set = set(cited_rows)
+        topk_set = set(topk_rows)
+        recall_at_k = float(len(cited_set & topk_set) / max(len(cited_set), 1))
+        attention_mass = float(att[cited_rows].sum().item()) if cited_rows else 0.0
+
+        if recall_at_k >= self.min_recall_at_k and attention_mass >= self.min_attention_mass:
+            return None
+
+        topk_token_ids = [int(tokens[r].token_id) for r in topk_rows if 0 <= r < len(tokens)]
+        return self._make_issue(
+            frame_idx=frame_idx,
+            message=f"Citations appear irrelevant (recall@k={recall_at_k:.2f}, att_mass={attention_mass:.2f}).",
+            evidence_trace=build_evidence_trace(
+                citations,
+                token_map,
+                rule_inputs={
+                    "min_recall_at_k": self.min_recall_at_k,
+                    "min_attention_mass": self.min_attention_mass,
+                    "query_seed": self.query_seed,
+                    "score_bias": self.score_bias,
+                },
+                rule_outputs={
+                    "k": int(k),
+                    "topk_token_ids": topk_token_ids,
+                    "recall_at_k": recall_at_k,
+                    "attention_mass_cited": attention_mass,
+                },
+            ),
+        )
 
 
 # ============================================================
@@ -279,7 +418,7 @@ class O1_CoarseLevelOnly(VerificationRule):
         if generation.refusal.get(frame_idx, False):
             return None
 
-        if frame.polarity != "positive":
+        if frame.polarity not in ("present", "positive"):
             return None
 
         # 具体声明：指定了 laterality
@@ -297,13 +436,13 @@ class O1_CoarseLevelOnly(VerificationRule):
             return self._make_issue(
                 frame_idx=frame_idx,
                 message=f"Specific claim (laterality={frame.laterality}) supported only by coarse-level evidence.",
-                evidence_trace={
-                    "citations": citations,
-                    "cell_ids": cell_ids,
-                    "levels": levels,
-                    "max_level": max(levels),
-                    "laterality": frame.laterality,
-                },
+                evidence_trace=build_evidence_trace(
+                    citations,
+                    token_map,
+                    rule_inputs={"max_coarse_level": self.max_coarse_level},
+                    rule_outputs={"levels": levels, "max_level": max(levels) if levels else None},
+                    extra={"cell_ids": cell_ids, "laterality": frame.laterality},
+                ),
             )
         return None
 
@@ -318,7 +457,7 @@ class O1_SeverityMismatch(VerificationRule):
         if generation.refusal.get(frame_idx, False):
             return None
 
-        if frame.polarity != "positive":
+        if frame.polarity not in ("present", "positive"):
             return None
 
         # 获取 finding 的基线严重程度
@@ -340,12 +479,17 @@ class O1_SeverityMismatch(VerificationRule):
             return self._make_issue(
                 frame_idx=frame_idx,
                 message=f"High-confidence claim for serious finding ({frame.finding}) lacks strong evidence.",
-                evidence_trace={
-                    "finding": frame.finding,
-                    "finding_severity": finding_severity,
-                    "confidence": frame.confidence,
-                    "avg_evidence_score": avg_score,
-                },
+                evidence_trace=build_evidence_trace(
+                    citations,
+                    token_map,
+                    rule_inputs={},
+                    rule_outputs={
+                        "finding": frame.finding,
+                        "finding_severity": finding_severity,
+                        "confidence": frame.confidence,
+                        "avg_evidence_score": avg_score,
+                    },
+                ),
             )
         return None
 
@@ -388,12 +532,13 @@ class I1_BilateralCitation(VerificationRule):
             return self._make_issue(
                 frame_idx=frame_idx,
                 message=f"Bilateral claim requires >= {self.min_citations} citations (got {len(citations)}).",
-                evidence_trace={
-                    "citations": citations,
-                    "cell_ids": cell_ids,
-                    "num_citations": len(citations),
-                    "min_required": self.min_citations,
-                },
+                evidence_trace=build_evidence_trace(
+                    citations,
+                    token_map,
+                    rule_inputs={"min_citations": self.min_citations},
+                    rule_outputs={"num_citations": len(citations)},
+                    extra={"cell_ids": cell_ids},
+                ),
             )
         return None
 
@@ -408,7 +553,7 @@ class I1_AnatomicalMismatch(VerificationRule):
         if generation.refusal.get(frame_idx, False):
             return None
 
-        if frame.polarity != "positive":
+        if frame.polarity not in ("present", "positive"):
             return None
 
         # 需要从 cell_id 推断解剖位置
@@ -417,52 +562,51 @@ class I1_AnatomicalMismatch(VerificationRule):
         if not citations:
             return None
 
+        from ..grid.cells import parse_cell_id
+
         # 从 cell_id 提取位置信息
         cell_ids = [token_map[tid].cell_id for tid in citations if tid in token_map]
 
         # 简化实现：检查 cell 的 x 坐标判断左右
-        # cell_id 格式: "L{level}:({ix},{iy},{iz})"
         left_count = 0
         right_count = 0
 
         for cell_id in cell_ids:
-            try:
-                coord_part = cell_id.split(":")[1].strip("()")
-                ix = int(coord_part.split(",")[0])
-                # 假设 ix < 中点 是左侧
-                # 这是简化的实现，实际需要根据 volume 尺寸计算
-                if ix == 0:
-                    left_count += 1
-                    right_count += 1  # level 0 覆盖全部
-                elif ix % 2 == 0:
-                    left_count += 1
-                else:
-                    right_count += 1
-            except:
+            cell = parse_cell_id(cell_id)
+            if cell is None:
                 continue
+            if cell.ix == 0 and cell.level == 0:
+                left_count += 1
+                right_count += 1  # level 0 covers whole volume
+            elif cell.ix % 2 == 0:
+                left_count += 1
+            else:
+                right_count += 1
 
         # 检查一致性
         if frame.laterality == "left" and left_count == 0 and right_count > 0:
             return self._make_issue(
                 frame_idx=frame_idx,
                 message="Left laterality claim but citations are from right side.",
-                evidence_trace={
-                    "laterality": frame.laterality,
-                    "cell_ids": cell_ids,
-                    "left_count": left_count,
-                    "right_count": right_count,
-                },
+                evidence_trace=build_evidence_trace(
+                    citations,
+                    token_map,
+                    rule_inputs={},
+                    rule_outputs={"left_count": left_count, "right_count": right_count},
+                    extra={"laterality": frame.laterality, "cell_ids": cell_ids},
+                ),
             )
         elif frame.laterality == "right" and right_count == 0 and left_count > 0:
             return self._make_issue(
                 frame_idx=frame_idx,
                 message="Right laterality claim but citations are from left side.",
-                evidence_trace={
-                    "laterality": frame.laterality,
-                    "cell_ids": cell_ids,
-                    "left_count": left_count,
-                    "right_count": right_count,
-                },
+                evidence_trace=build_evidence_trace(
+                    citations,
+                    token_map,
+                    rule_inputs={},
+                    rule_outputs={"left_count": left_count, "right_count": right_count},
+                    extra={"laterality": frame.laterality, "cell_ids": cell_ids},
+                ),
             )
 
         return None
@@ -507,13 +651,17 @@ class I1_ConflictingFindings(VerificationRule):
                 return self._make_issue(
                     frame_idx=frame_idx,
                     message=f"Conflicting findings: {frame.finding} is both {frame.polarity} and {other_frame.polarity}.",
-                    evidence_trace={
-                        "current_frame": frame_idx,
-                        "other_frame": other_idx,
-                        "finding": frame.finding,
-                        "polarities": [frame.polarity, other_frame.polarity],
-                        "overlapping_citations": list(overlap),
-                    },
+                    evidence_trace=build_evidence_trace(
+                        list(overlap),
+                        token_map,
+                        rule_inputs={},
+                        rule_outputs={
+                            "current_frame": frame_idx,
+                            "other_frame": other_idx,
+                            "finding": frame.finding,
+                            "polarities": [frame.polarity, other_frame.polarity],
+                        },
+                    ),
                 )
 
         return None
@@ -531,7 +679,7 @@ class I1_PolarityConfidence(VerificationRule):
             return None
 
         # Negative 声明的置信度不应过高（因为"absence of evidence is not evidence of absence"）
-        if frame.polarity == "negative" and frame.confidence > self.negative_max_confidence:
+        if frame.polarity in ("absent", "negative") and frame.confidence > self.negative_max_confidence:
             citations = generation.citations.get(frame_idx, [])
 
             # 除非有大量高质量证据覆盖该区域
@@ -539,14 +687,76 @@ class I1_PolarityConfidence(VerificationRule):
                 return self._make_issue(
                     frame_idx=frame_idx,
                     message=f"High confidence ({frame.confidence:.2f}) for negative finding without extensive coverage.",
-                    evidence_trace={
-                        "polarity": frame.polarity,
-                        "confidence": frame.confidence,
-                        "num_citations": len(citations),
-                        "threshold": self.negative_max_confidence,
-                    },
+                    evidence_trace=build_evidence_trace(
+                        citations,
+                        token_map,
+                        rule_inputs={"negative_max_confidence": self.negative_max_confidence},
+                        rule_outputs={"polarity": frame.polarity, "confidence": frame.confidence, "num_citations": len(citations)},
+                    ),
                     severity=1,
                 )
+        return None
+
+
+class I1_TextRoundTrip(VerificationRule):
+    """Dual-channel protocol: narrative text must round-trip to the same findings table.
+
+    If `generation.text` is empty, this rule is skipped.
+    """
+
+    def __init__(self):
+        super().__init__("I1.4", "I1_inconsistency", severity=2)
+
+    def check(self, frame_idx, frame, generation, tokens, token_map):
+        # This is a generation-level check; run once.
+        if frame_idx != 0:
+            return None
+
+        if not getattr(generation, "text", "").strip():
+            return None
+
+        from ..pcg.narrative import parse_generation_text, roundtrip_equal
+
+        try:
+            frames2, citations2, q2, refusal2 = parse_generation_text(generation.text)
+        except Exception as e:
+            all_token_ids = sorted({int(t) for cites in generation.citations.values() for t in cites})
+            return self._make_issue(
+                frame_idx=frame_idx,
+                message=f"Narrative text is not parseable: {e}",
+                evidence_trace=build_evidence_trace(
+                    all_token_ids,
+                    token_map,
+                    rule_outputs={"parse_error": str(e)},
+                ),
+                severity=2,
+            )
+
+        parsed = Generation(frames=frames2, citations=citations2, q=q2, refusal=refusal2, text="")
+        original = Generation(
+            frames=generation.frames,
+            citations=generation.citations,
+            q=generation.q,
+            refusal=generation.refusal,
+            text="",
+        )
+
+        if not roundtrip_equal(original, parsed):
+            all_token_ids = sorted({int(t) for cites in generation.citations.values() for t in cites})
+            return self._make_issue(
+                frame_idx=frame_idx,
+                message="Narrative text does not round-trip to the same findings table.",
+                evidence_trace=build_evidence_trace(
+                    all_token_ids,
+                    token_map,
+                    rule_outputs={
+                        "original_frames": [f.finding for f in generation.frames],
+                        "parsed_frames": [f.finding for f in frames2],
+                    },
+                ),
+                severity=2,
+            )
+
         return None
 
 
@@ -564,18 +774,20 @@ class M1_MissingLaterality(VerificationRule):
         if generation.refusal.get(frame_idx, False):
             return None
 
-        if frame.polarity == "positive" and frame.laterality == "unspecified":
+        if frame.polarity in ("present", "positive") and frame.laterality == "unspecified":
             citations = generation.citations.get(frame_idx, [])
             cell_ids = [token_map[tid].cell_id for tid in citations if tid in token_map]
 
             return self._make_issue(
                 frame_idx=frame_idx,
                 message="Positive finding must specify laterality.",
-                evidence_trace={
-                    "citations": citations,
-                    "cell_ids": cell_ids,
-                    "finding": frame.finding,
-                },
+                evidence_trace=build_evidence_trace(
+                    citations,
+                    token_map,
+                    rule_inputs={},
+                    rule_outputs={"finding": frame.finding},
+                    extra={"cell_ids": cell_ids},
+                ),
             )
         return None
 
@@ -594,7 +806,11 @@ class M1_MissingFinding(VerificationRule):
             return self._make_issue(
                 frame_idx=frame_idx,
                 message="Frame is missing finding type.",
-                evidence_trace={"finding": frame.finding},
+                evidence_trace=build_evidence_trace(
+                    [],
+                    token_map,
+                    rule_outputs={"finding": frame.finding},
+                ),
             )
         return None
 
@@ -613,11 +829,15 @@ class M1_LowConfidenceNoExplanation(VerificationRule):
                 return self._make_issue(
                     frame_idx=frame_idx,
                     message=f"Low confidence ({frame.confidence:.2f}) finding should either be refused or have more evidence.",
-                    evidence_trace={
-                        "confidence": frame.confidence,
-                        "threshold": self.low_confidence_threshold,
-                        "refusal": generation.refusal.get(frame_idx, False),
-                    },
+                    evidence_trace=build_evidence_trace(
+                        [],
+                        token_map,
+                        rule_inputs={"low_confidence_threshold": self.low_confidence_threshold},
+                        rule_outputs={
+                            "confidence": frame.confidence,
+                            "refusal": generation.refusal.get(frame_idx, False),
+                        },
+                    ),
                     severity=1,
                 )
         return None
@@ -651,6 +871,7 @@ class RuleBasedVerifier:
         self.add_rule(U1_LowScore(min_score=0.35))
         self.add_rule(U1_HighUncertainty(max_uncertainty=0.7))
         self.add_rule(U1_InsufficientCoverage(min_coverage_ratio=0.05))
+        self.add_rule(U1_CitationRelevance())
 
         # O1: Overclaim
         self.add_rule(O1_CoarseLevelOnly(max_coarse_level=0))
@@ -661,6 +882,7 @@ class RuleBasedVerifier:
         self.add_rule(I1_AnatomicalMismatch())
         self.add_rule(I1_ConflictingFindings())
         self.add_rule(I1_PolarityConfidence())
+        self.add_rule(I1_TextRoundTrip())
 
         # M1: Missing Slot
         self.add_rule(M1_MissingLaterality())

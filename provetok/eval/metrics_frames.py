@@ -22,6 +22,10 @@ class FrameMatchResult:
     finding_match: bool
     polarity_match: bool
     laterality_match: bool
+    location_match: bool
+    size_bin_match: bool
+    severity_match: bool
+    uncertainty_match: bool
     full_match: bool
 
 
@@ -37,6 +41,10 @@ class FrameMetrics:
     finding_accuracy: float
     polarity_accuracy: float
     laterality_accuracy: float
+    location_accuracy: float
+    size_bin_accuracy: float
+    severity_accuracy: float
+    uncertainty_accuracy: float
 
     # Counts
     num_pred: int
@@ -56,19 +64,25 @@ def compute_frame_similarity(pred: Frame, gt: Frame) -> float:
 
     # Finding type match (highest weight)
     if pred.finding.lower() == gt.finding.lower():
-        score += 0.5
+        score += 0.4
     elif _is_similar_finding(pred.finding, gt.finding):
-        score += 0.3
+        score += 0.25
 
-    # Polarity match
-    if pred.polarity == gt.polarity:
-        score += 0.3
+    # Coarse location match
+    if pred.location == gt.location:
+        score += 0.25
+    elif pred.location == "unspecified" or gt.location == "unspecified":
+        score += 0.1  # partial credit
 
     # Laterality match
     if pred.laterality == gt.laterality:
         score += 0.2
     elif pred.laterality == "unspecified" or gt.laterality == "unspecified":
         score += 0.1  # partial credit
+
+    # Polarity match
+    if pred.polarity == gt.polarity:
+        score += 0.15
 
     return score
 
@@ -132,10 +146,18 @@ def hungarian_match_frames(
                 finding_match=pred.finding.lower() == gt.finding.lower(),
                 polarity_match=pred.polarity == gt.polarity,
                 laterality_match=pred.laterality == gt.laterality,
+                location_match=pred.location == gt.location,
+                size_bin_match=pred.size_bin == gt.size_bin,
+                severity_match=pred.severity == gt.severity,
+                uncertainty_match=pred.uncertain == gt.uncertain,
                 full_match=(
                     pred.finding.lower() == gt.finding.lower() and
                     pred.polarity == gt.polarity and
-                    pred.laterality == gt.laterality
+                    pred.laterality == gt.laterality and
+                    pred.location == gt.location and
+                    pred.size_bin == gt.size_bin and
+                    pred.severity == gt.severity and
+                    pred.uncertain == gt.uncertain
                 ),
             ))
 
@@ -179,8 +201,13 @@ def compute_frame_f1(
         finding_acc = sum(m.finding_match for m in matches) / num_matched
         polarity_acc = sum(m.polarity_match for m in matches) / num_matched
         laterality_acc = sum(m.laterality_match for m in matches) / num_matched
+        location_acc = sum(m.location_match for m in matches) / num_matched
+        size_acc = sum(m.size_bin_match for m in matches) / num_matched
+        severity_acc = sum(m.severity_match for m in matches) / num_matched
+        uncertainty_acc = sum(m.uncertainty_match for m in matches) / num_matched
     else:
         finding_acc = polarity_acc = laterality_acc = 0.0
+        location_acc = size_acc = severity_acc = uncertainty_acc = 0.0
 
     # Per-finding F1
     per_finding_f1 = _compute_per_finding_f1(pred_frames, gt_frames, matches)
@@ -192,6 +219,10 @@ def compute_frame_f1(
         finding_accuracy=finding_acc,
         polarity_accuracy=polarity_acc,
         laterality_accuracy=laterality_acc,
+        location_accuracy=location_acc,
+        size_bin_accuracy=size_acc,
+        severity_accuracy=severity_acc,
+        uncertainty_accuracy=uncertainty_acc,
         num_pred=num_pred,
         num_gt=num_gt,
         num_matched=num_matched,
@@ -244,7 +275,13 @@ def aggregate_frame_metrics(
     if not metrics_list:
         return FrameMetrics(
             precision=0.0, recall=0.0, f1=0.0,
-            finding_accuracy=0.0, polarity_accuracy=0.0, laterality_accuracy=0.0,
+            finding_accuracy=0.0,
+            polarity_accuracy=0.0,
+            laterality_accuracy=0.0,
+            location_accuracy=0.0,
+            size_bin_accuracy=0.0,
+            severity_accuracy=0.0,
+            uncertainty_accuracy=0.0,
             num_pred=0, num_gt=0, num_matched=0,
             per_finding_f1={},
         )
@@ -263,8 +300,13 @@ def aggregate_frame_metrics(
         finding_acc = sum(m.finding_accuracy * m.num_matched for m in metrics_list) / total_matched
         polarity_acc = sum(m.polarity_accuracy * m.num_matched for m in metrics_list) / total_matched
         laterality_acc = sum(m.laterality_accuracy * m.num_matched for m in metrics_list) / total_matched
+        location_acc = sum(m.location_accuracy * m.num_matched for m in metrics_list) / total_matched
+        size_acc = sum(m.size_bin_accuracy * m.num_matched for m in metrics_list) / total_matched
+        severity_acc = sum(m.severity_accuracy * m.num_matched for m in metrics_list) / total_matched
+        uncertainty_acc = sum(m.uncertainty_accuracy * m.num_matched for m in metrics_list) / total_matched
     else:
         finding_acc = polarity_acc = laterality_acc = 0.0
+        location_acc = size_acc = severity_acc = uncertainty_acc = 0.0
 
     # Aggregate per-finding F1
     all_findings: Set[str] = set()
@@ -283,6 +325,10 @@ def aggregate_frame_metrics(
         finding_accuracy=finding_acc,
         polarity_accuracy=polarity_acc,
         laterality_accuracy=laterality_acc,
+        location_accuracy=location_acc,
+        size_bin_accuracy=size_acc,
+        severity_accuracy=severity_acc,
+        uncertainty_accuracy=uncertainty_acc,
         num_pred=total_pred,
         num_gt=total_gt,
         num_matched=total_matched,
@@ -306,6 +352,10 @@ def format_frame_metrics(metrics: FrameMetrics) -> str:
         f"  Finding:     {metrics.finding_accuracy:.4f}",
         f"  Polarity:    {metrics.polarity_accuracy:.4f}",
         f"  Laterality:  {metrics.laterality_accuracy:.4f}",
+        f"  Location:    {metrics.location_accuracy:.4f}",
+        f"  Size Bin:    {metrics.size_bin_accuracy:.4f}",
+        f"  Severity:    {metrics.severity_accuracy:.4f}",
+        f"  Uncertainty: {metrics.uncertainty_accuracy:.4f}",
         "",
         "Per-Finding F1:",
     ]

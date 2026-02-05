@@ -1,4 +1,5 @@
 from .generator import ToyPCG
+from .llama2_pcg import Llama2PCG, Llama2PCGConfig
 from .evidence_graph import (
     EvidenceGraph,
     EvidenceGraphBuilder,

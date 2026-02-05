@@ -38,6 +38,7 @@ from .rules import (
     U1_LowScore,
     U1_HighUncertainty,
     U1_InsufficientCoverage,
+    U1_CitationRelevance,
     # O1 规则
     O1_CoarseLevelOnly,
     O1_SeverityMismatch,
@@ -91,6 +92,7 @@ __all__ = [
     "U1_LowScore",
     "U1_HighUncertainty",
     "U1_InsufficientCoverage",
+    "U1_CitationRelevance",
     "O1_CoarseLevelOnly",
     "O1_SeverityMismatch",
     "O1_SizeClaim",

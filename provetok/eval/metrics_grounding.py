@@ -12,8 +12,8 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from ..types import Token
-from ..grid.cells import Cell, cell_bounds
+from ..types import Token, Generation
+from ..grid.cells import Cell, cell_bounds, parse_cell_id
 
 
 @dataclass
@@ -85,7 +85,7 @@ def tokens_to_mask(
 
     for token in tokens:
         # 解析 cell_id 获取边界
-        cell = _parse_cell_from_id(token.cell_id)
+        cell = parse_cell_id(token.cell_id)
         if cell is None:
             continue
 
@@ -95,31 +95,13 @@ def tokens_to_mask(
     return mask
 
 
-def _parse_cell_from_id(cell_id: str) -> Optional[Cell]:
-    """从 cell_id 字符串解析 Cell 对象
-
-    cell_id 格式: "L{level}:({ix},{iy},{iz})"
-    """
-    try:
-        # 解析格式 "L0:(0,0,0)"
-        level_part, coord_part = cell_id.split(":")
-        level = int(level_part[1:])
-
-        # 解析坐标
-        coord_str = coord_part.strip("()")
-        coords = [int(x) for x in coord_str.split(",")]
-
-        return Cell(level=level, ix=coords[0], iy=coords[1], iz=coords[2])
-    except Exception:
-        return None
-
-
 def compute_citation_grounding(
     citations: List[int],
     tokens: List[Token],
     lesion_mask: np.ndarray,
     volume_shape: Tuple[int, int, int],
     overlap_threshold: float = 0.1,
+    lesion_coverage_threshold: Optional[float] = None,
 ) -> Dict[str, float]:
     """计算单个样本的 citation grounding 指标
 
@@ -129,18 +111,26 @@ def compute_citation_grounding(
         lesion_mask: ground truth lesion segmentation (D, H, W)
         volume_shape: volume 形状
         overlap_threshold: hit 判定阈值
+        lesion_coverage_threshold: hit 判定阈值（intersection / lesion_volume）。若为 None，则复用 overlap_threshold。
 
     Returns:
-        Dict with hit, iou_max, iou_union, dice_max, dice_union
+        Dict with hit, iou_max, iou_union, dice_max, dice_union + extra diagnostics
     """
+    if lesion_coverage_threshold is None:
+        lesion_coverage_threshold = overlap_threshold
+
     if not citations:
         return {
             "hit": 0.0,
+            "hit_any_intersection": 0.0,
+            "hit_lesion_coverage": 0.0,
             "iou_max": 0.0,
             "iou_union": 0.0,
             "dice_max": 0.0,
             "dice_union": 0.0,
             "overlap_ratio": 0.0,
+            "overlap_ratio_token": 0.0,
+            "overlap_ratio_lesion": 0.0,
         }
 
     # 获取 cited tokens
@@ -150,17 +140,23 @@ def compute_citation_grounding(
     if not cited_tokens:
         return {
             "hit": 0.0,
+            "hit_any_intersection": 0.0,
+            "hit_lesion_coverage": 0.0,
             "iou_max": 0.0,
             "iou_union": 0.0,
             "dice_max": 0.0,
             "dice_union": 0.0,
             "overlap_ratio": 0.0,
+            "overlap_ratio_token": 0.0,
+            "overlap_ratio_lesion": 0.0,
         }
 
     # 计算每个 citation 的 mask 和指标
     ious = []
     dices = []
-    overlaps = []
+    overlaps_token = []
+    overlaps_lesion = []
+    intersections = []
 
     for token in cited_tokens:
         token_mask = tokens_to_mask([token], volume_shape)
@@ -170,11 +166,17 @@ def compute_citation_grounding(
         ious.append(iou)
         dices.append(dice)
 
-        # overlap ratio
-        intersection = np.logical_and(token_mask, lesion_mask).sum()
-        token_volume = token_mask.sum()
-        overlap_ratio = intersection / token_volume if token_volume > 0 else 0.0
-        overlaps.append(overlap_ratio)
+        # overlap ratio diagnostics
+        intersection = int(np.logical_and(token_mask, lesion_mask).sum())
+        token_volume = int(token_mask.sum())
+        lesion_volume = int(lesion_mask.astype(bool).sum())
+
+        overlap_ratio_token = float(intersection / token_volume) if token_volume > 0 else 0.0
+        overlap_ratio_lesion = float(intersection / lesion_volume) if lesion_volume > 0 else 0.0
+
+        intersections.append(float(intersection))
+        overlaps_token.append(overlap_ratio_token)
+        overlaps_lesion.append(overlap_ratio_lesion)
 
     # Union mask
     union_mask = tokens_to_mask(cited_tokens, volume_shape)
@@ -182,16 +184,90 @@ def compute_citation_grounding(
     dice_union = compute_dice(union_mask, lesion_mask)
 
     # Hit rate: 是否有任何 citation 与 lesion 有足够 overlap
-    hit = 1.0 if max(overlaps) >= overlap_threshold else 0.0
+    hit = 1.0 if max(overlaps_token) >= overlap_threshold else 0.0
+    hit_any_intersection = 1.0 if max(intersections) > 0.0 else 0.0
+    hit_lesion_coverage = 1.0 if max(overlaps_lesion) >= float(lesion_coverage_threshold) else 0.0
 
     return {
         "hit": hit,
+        "hit_any_intersection": hit_any_intersection,
+        "hit_lesion_coverage": hit_lesion_coverage,
         "iou_max": max(ious) if ious else 0.0,
         "iou_union": iou_union,
         "dice_max": max(dices) if dices else 0.0,
         "dice_union": dice_union,
-        "overlap_ratio": np.mean(overlaps) if overlaps else 0.0,
+        # Backward compatible key (token overlap).
+        "overlap_ratio": float(np.mean(overlaps_token)) if overlaps_token else 0.0,
+        "overlap_ratio_token": float(np.mean(overlaps_token)) if overlaps_token else 0.0,
+        "overlap_ratio_lesion": float(np.mean(overlaps_lesion)) if overlaps_lesion else 0.0,
     }
+
+
+def union_lesion_masks(
+    lesion_masks: Dict[int, np.ndarray],
+    volume_shape: Tuple[int, int, int],
+) -> np.ndarray:
+    """Union all lesion masks into a single mask aligned with the volume.
+
+    Motivation: in real-world datasets the mapping between extracted frames and
+    mask indices may be ambiguous or unavailable. Union-level grounding keeps
+    the evaluation informative without relying on fragile per-frame alignment.
+    """
+    out = np.zeros(volume_shape, dtype=bool)
+    for _, m in (lesion_masks or {}).items():
+        if isinstance(m, torch.Tensor):
+            m = m.detach().cpu().numpy()
+        if not isinstance(m, np.ndarray) or m.ndim != 3:
+            continue
+        if tuple(m.shape) != tuple(volume_shape):
+            # Skip mismatched masks to avoid silent axis-order bugs.
+            continue
+        out = np.logical_or(out, m.astype(bool))
+    return out
+
+
+def union_citations(citations: Dict[int, List[int]]) -> List[int]:
+    """Union token_ids over all frames; return deterministic sorted ids."""
+    ids: Set[int] = set()
+    for _, token_ids in (citations or {}).items():
+        for tid in token_ids:
+            ids.add(int(tid))
+    return sorted(ids)
+
+
+def _select_positive_citations(generation: Generation) -> Dict[int, List[int]]:
+    out: Dict[int, List[int]] = {}
+    for idx, f in enumerate(generation.frames):
+        if f.polarity in ("present", "positive"):
+            out[idx] = list(generation.citations.get(idx, []))
+    return out
+
+
+def compute_generation_grounding(
+    generation: Generation,
+    tokens: List[Token],
+    lesion_masks: Dict[int, np.ndarray],
+    volume_shape: Tuple[int, int, int],
+    *,
+    overlap_threshold: float = 0.1,
+    positive_only: bool = True,
+) -> Dict[str, float]:
+    """Compute grounding against the union lesion mask using union citations.
+
+    This is a more robust alternative to per-frame grounding:
+    - lesion_masks: may be indexed by dataset-provided finding ids (not frames)
+    - citations: are indexed by extracted frames
+    """
+    cites_by_frame = _select_positive_citations(generation) if positive_only else (generation.citations or {})
+    cited_ids = union_citations(cites_by_frame)
+    lesion_union = union_lesion_masks(lesion_masks, volume_shape)
+    return compute_citation_grounding(
+        citations=cited_ids,
+        tokens=tokens,
+        lesion_mask=lesion_union,
+        volume_shape=volume_shape,
+        overlap_threshold=overlap_threshold,
+    )
 
 
 def compute_grounding_metrics(

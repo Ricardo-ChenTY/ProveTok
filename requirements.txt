@@ -4,11 +4,21 @@ pydantic>=2.6
 typer>=0.9
 rich>=13.7
 PyYAML>=6.0
+scipy>=1.10
+tqdm>=4.66
+pandas>=2.0
+huggingface-hub>=0.20
+matplotlib>=3.7
 
 # --- LLM Backend (M3 阶段需要) ---
 transformers>=4.36
 accelerate>=0.25
 # bitsandbytes>=0.41     # 4-bit/8-bit 量化, Windows 需要特殊版本
+
+# --- Text metrics (paper-grade) ---
+sacrebleu>=2.4
+rouge-score>=0.1.2
+bert-score>=0.3.13
 
 # --- 真实数据加载 (可选) ---
 # nibabel>=5.0           # NIfTI 文件读取

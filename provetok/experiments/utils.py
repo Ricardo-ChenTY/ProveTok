@@ -62,7 +62,7 @@ def mock_generator_fn(tokens: List[Token]) -> Generation:
     refusal = {}
 
     findings = ["nodule", "opacity", "effusion", "atelectasis", "consolidation"]
-    polarities = ["positive", "negative"]
+    polarities = ["present", "absent"]
     lateralities = ["left", "right", "bilateral", "unspecified"]
 
     for i in range(num_frames):
@@ -159,7 +159,7 @@ def create_synthetic_volume(
         # 在 volume 中添加高亮
         volume[mask] += 0.5 + rng.random() * 0.3
 
-    return torch.from_numpy(volume).unsqueeze(0), lesion_masks
+    return torch.from_numpy(volume), lesion_masks
 
 
 # ============================================================
@@ -169,7 +169,8 @@ def create_synthetic_volume(
 def compute_nlg_metrics(generation: Generation, reference: str = None) -> Dict[str, float]:
     """计算 NLG 指标（简化版）
 
-    实际使用时应该用 BLEU, ROUGE 等标准库
+    - 默认返回结构化 proxy（frame 数、平均 confidence 等）
+    - 当提供 `reference`（原始报告文本）时，同时计算 BLEU/ROUGE（paper-grade，若依赖可用）
 
     根据 types.py 的 Generation 定义:
     - frames, citations, q, refusal
@@ -181,13 +182,28 @@ def compute_nlg_metrics(generation: Generation, reference: str = None) -> Dict[s
     avg_q = np.mean(list(generation.q.values())) if generation.q else 0.0
     refusal_rate = sum(generation.refusal.values()) / len(generation.refusal) if generation.refusal else 0.0
 
-    # Mock metrics
-    return {
+    out: Dict[str, float] = {
         "n_frames": n_frames,
         "avg_confidence": avg_confidence,
         "avg_accept_prob": avg_q,
         "refusal_rate": refusal_rate,
     }
+
+    if reference is not None:
+        try:
+            from ..data.frame_extractor import frames_to_report
+            from ..eval.metrics_text import MissingTextMetricDependency, compute_text_metrics
+
+            pred_text = frames_to_report(generation.frames)
+            m = compute_text_metrics(pred_text, str(reference))
+            out.update({k: float(v) for k, v in m.items()})
+        except MissingTextMetricDependency:
+            # Optional deps; keep output stable even if text-metric libs are absent.
+            pass
+        except Exception:
+            pass
+
+    return out
 
 
 def aggregate_metrics(

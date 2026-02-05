@@ -18,7 +18,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ..types import Token, Frame, Generation
-from ..pcg.schema import FINDINGS, LATERALITY, POLARITY
+from ..pcg.schema import (
+    FINDINGS,
+    LATERALITY,
+    POLARITY,
+    LOCATIONS,
+    SIZE_BINS,
+    SEVERITY_LEVELS,
+    UNCERTAINTY,
+)
+from ..pcg.narrative import render_generation_text
 
 
 class CitationAttention(nn.Module):
@@ -176,7 +185,10 @@ class PCGHead(nn.Module):
         # 自动确定 finding 数量
         if num_findings is None:
             num_findings = len(FINDINGS)
+        if num_findings > len(FINDINGS):
+            raise ValueError(f"num_findings={num_findings} > len(FINDINGS)={len(FINDINGS)}")
         self.num_findings = num_findings
+        self.finding_vocab = FINDINGS[:num_findings]
 
         # Finding query embeddings (可学习)
         self.finding_queries = nn.Parameter(
@@ -190,6 +202,10 @@ class PCGHead(nn.Module):
         self.finding_classifier = SlotClassifier(emb_dim, num_findings, hidden_dim)
         self.polarity_classifier = SlotClassifier(emb_dim, len(POLARITY), hidden_dim)
         self.laterality_classifier = SlotClassifier(emb_dim, len(LATERALITY), hidden_dim)
+        self.location_classifier = SlotClassifier(emb_dim, len(LOCATIONS), hidden_dim)
+        self.size_classifier = SlotClassifier(emb_dim, len(SIZE_BINS), hidden_dim)
+        self.severity_classifier = SlotClassifier(emb_dim, len(SEVERITY_LEVELS), hidden_dim)
+        self.uncertainty_classifier = SlotClassifier(emb_dim, len(UNCERTAINTY), hidden_dim)
 
         # Confidence head
         self.confidence_head = nn.Sequential(
@@ -231,13 +247,21 @@ class PCGHead(nn.Module):
         )
 
         # 2. Slot classification (with optional constraints)
-        finding_mask = self._build_mask(constrained_vocab, "finding_type", FINDINGS)
+        finding_mask = self._build_mask(constrained_vocab, "finding_type", self.finding_vocab)
         polarity_mask = self._build_mask(constrained_vocab, "polarity", POLARITY)
         laterality_mask = self._build_mask(constrained_vocab, "laterality", LATERALITY)
+        location_mask = self._build_mask(constrained_vocab, "location", LOCATIONS)
+        size_mask = self._build_mask(constrained_vocab, "size_bin", SIZE_BINS)
+        severity_mask = self._build_mask(constrained_vocab, "severity", SEVERITY_LEVELS)
+        uncertainty_mask = self._build_mask(constrained_vocab, "uncertainty", UNCERTAINTY)
 
         finding_logits = self.finding_classifier(frame_features, finding_mask)
         polarity_logits = self.polarity_classifier(frame_features, polarity_mask)
         laterality_logits = self.laterality_classifier(frame_features, laterality_mask)
+        location_logits = self.location_classifier(frame_features, location_mask)
+        size_logits = self.size_classifier(frame_features, size_mask)
+        severity_logits = self.severity_classifier(frame_features, severity_mask)
+        uncertainty_logits = self.uncertainty_classifier(frame_features, uncertainty_mask)
 
         # 3. Confidence
         confidence = self.confidence_head(frame_features).squeeze(-1)  # (K,)
@@ -254,6 +278,10 @@ class PCGHead(nn.Module):
             "finding_logits": finding_logits,
             "polarity_logits": polarity_logits,
             "laterality_logits": laterality_logits,
+            "location_logits": location_logits,
+            "size_logits": size_logits,
+            "severity_logits": severity_logits,
+            "uncertainty_logits": uncertainty_logits,
             "confidence": confidence,
             "attn_weights": attn_weights,
             "q_k": q_k,
@@ -288,16 +316,28 @@ class PCGHead(nn.Module):
         finding_probs = F.softmax(out["finding_logits"], dim=-1)
         polarity_probs = F.softmax(out["polarity_logits"], dim=-1)
         laterality_probs = F.softmax(out["laterality_logits"], dim=-1)
+        location_probs = F.softmax(out["location_logits"], dim=-1)
+        size_probs = F.softmax(out["size_logits"], dim=-1)
+        severity_probs = F.softmax(out["severity_logits"], dim=-1)
+        uncertainty_probs = F.softmax(out["uncertainty_logits"], dim=-1)
 
         for k in range(K):
             # Decode slots
             finding_idx = finding_probs[k].argmax().item()
             polarity_idx = polarity_probs[k].argmax().item()
             laterality_idx = laterality_probs[k].argmax().item()
+            location_idx = location_probs[k].argmax().item()
+            size_idx = size_probs[k].argmax().item()
+            severity_idx = severity_probs[k].argmax().item()
+            uncertainty_idx = uncertainty_probs[k].argmax().item()
 
-            finding = FINDINGS[finding_idx]
+            finding = self.finding_vocab[finding_idx]
             polarity = POLARITY[polarity_idx]
             laterality = LATERALITY[laterality_idx]
+            location = LOCATIONS[location_idx]
+            size_bin = SIZE_BINS[size_idx]
+            severity = SEVERITY_LEVELS[severity_idx]
+            uncertain = (UNCERTAINTY[uncertainty_idx] == "uncertain")
             conf = float(out["confidence"][k].item())
 
             frames.append(Frame(
@@ -305,6 +345,10 @@ class PCGHead(nn.Module):
                 polarity=polarity,
                 laterality=laterality,
                 confidence=conf,
+                location=location,
+                size_bin=size_bin,
+                severity=severity,
+                uncertain=uncertain,
             ))
 
             # Citations: top-k tokens by attention
@@ -325,7 +369,8 @@ class PCGHead(nn.Module):
             # Refusal decision
             refusal[k] = (q_k < self.tau_refuse and polarity == "present")
 
-        return Generation(frames=frames, citations=citations, q=q, refusal=refusal)
+        tmp = Generation(frames=frames, citations=citations, q=q, refusal=refusal, text="")
+        return Generation(frames=frames, citations=citations, q=q, refusal=refusal, text=render_generation_text(tmp))
 
     def _build_mask(
         self,
@@ -369,16 +414,29 @@ class PCGHead(nn.Module):
 
         if K == 0:
             zero = torch.tensor(0.0, device=device, requires_grad=True)
-            return {"total": zero, "finding": zero, "polarity": zero, "laterality": zero}
+            return {
+                "total": zero,
+                "finding": zero,
+                "polarity": zero,
+                "laterality": zero,
+                "location": zero,
+                "size_bin": zero,
+                "severity": zero,
+                "uncertainty": zero,
+            }
 
         # Finding classification loss
         gt_finding_ids = []
         gt_polarity_ids = []
         gt_laterality_ids = []
+        gt_location_ids = []
+        gt_size_ids = []
+        gt_severity_ids = []
+        gt_uncertainty_ids = []
 
         for frame in gt_frames[:K]:
             gt_finding_ids.append(
-                FINDINGS.index(frame.finding) if frame.finding in FINDINGS else 0
+                self.finding_vocab.index(frame.finding) if frame.finding in self.finding_vocab else 0
             )
             gt_polarity_ids.append(
                 POLARITY.index(frame.polarity) if frame.polarity in POLARITY else 0
@@ -386,15 +444,43 @@ class PCGHead(nn.Module):
             gt_laterality_ids.append(
                 LATERALITY.index(frame.laterality) if frame.laterality in LATERALITY else len(LATERALITY) - 1
             )
+            gt_location_ids.append(
+                LOCATIONS.index(frame.location) if frame.location in LOCATIONS else LOCATIONS.index("unspecified")
+            )
+            gt_size_ids.append(
+                SIZE_BINS.index(frame.size_bin) if frame.size_bin in SIZE_BINS else SIZE_BINS.index("unspecified")
+            )
+            gt_severity_ids.append(
+                SEVERITY_LEVELS.index(frame.severity) if frame.severity in SEVERITY_LEVELS else SEVERITY_LEVELS.index("unspecified")
+            )
+            gt_uncertainty_ids.append(
+                UNCERTAINTY.index("uncertain" if frame.uncertain else "certain")
+            )
 
         gt_finding = torch.tensor(gt_finding_ids, device=device)
         gt_polarity = torch.tensor(gt_polarity_ids, device=device)
         gt_laterality = torch.tensor(gt_laterality_ids, device=device)
+        gt_location = torch.tensor(gt_location_ids, device=device)
+        gt_size = torch.tensor(gt_size_ids, device=device)
+        gt_severity = torch.tensor(gt_severity_ids, device=device)
+        gt_uncertainty = torch.tensor(gt_uncertainty_ids, device=device)
 
         losses["finding"] = F.cross_entropy(out["finding_logits"][:K], gt_finding)
         losses["polarity"] = F.cross_entropy(out["polarity_logits"][:K], gt_polarity)
         losses["laterality"] = F.cross_entropy(out["laterality_logits"][:K], gt_laterality)
+        losses["location"] = F.cross_entropy(out["location_logits"][:K], gt_location)
+        losses["size_bin"] = F.cross_entropy(out["size_logits"][:K], gt_size)
+        losses["severity"] = F.cross_entropy(out["severity_logits"][:K], gt_severity)
+        losses["uncertainty"] = F.cross_entropy(out["uncertainty_logits"][:K], gt_uncertainty)
 
-        losses["total"] = losses["finding"] + losses["polarity"] + losses["laterality"]
+        losses["total"] = (
+            losses["finding"]
+            + losses["polarity"]
+            + losses["laterality"]
+            + losses["location"]
+            + losses["size_bin"]
+            + losses["severity"]
+            + losses["uncertainty"]
+        )
 
         return losses

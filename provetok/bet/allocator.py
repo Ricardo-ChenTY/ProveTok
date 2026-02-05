@@ -1,9 +1,18 @@
 from __future__ import annotations
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Literal
 from ..types import Issue, Token
 from ..grid.cells import Cell
 
-def pick_cell_to_split(cells: List[Cell], tokens: List[Token], issues: List[Issue]) -> Optional[Cell]:
+PickPrefer = Literal["uncertainty", "score"]
+
+
+def pick_cell_to_split(
+    cells: List[Cell],
+    tokens: List[Token],
+    issues: List[Issue],
+    *,
+    prefer: PickPrefer = "uncertainty",
+) -> Optional[Cell]:
     """Deterministic greedy allocator.
 
     Priority:
@@ -17,6 +26,15 @@ def pick_cell_to_split(cells: List[Cell], tokens: List[Token], issues: List[Issu
 
     cell_by_id = {c.id(): c for c in cells}
     token_by_cell = {t.cell_id: t for t in tokens}
+
+    if prefer == "score":
+        scored = []
+        for c in cells:
+            t = token_by_cell.get(c.id())
+            s = float(t.score) if t else 0.0
+            scored.append((s, c.id(), c))
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        return scored[0][2] if scored else None
 
     blamed: Dict[str, float] = {}
     for iss in issues:

@@ -39,6 +39,7 @@ env/
 outputs/
 logs/
 *.log
+.rd_queue/
 
 # Model weights
 *.pt

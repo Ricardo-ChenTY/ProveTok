@@ -24,6 +24,7 @@ from ..bet.evidence_head import EvidenceHead, rank_cells_by_delta
 from ..bet.refine_loop import run_refine_loop, RefineResult
 from .pcg_head import PCGHead
 from .llm_backend import BaseLLMBackend, DummyLLM, create_llm_backend
+from ..pcg.evidence_graph import EvidenceGraphBuilder, get_constrained_vocab
 
 
 @dataclass
@@ -62,6 +63,7 @@ class ProveTokSystem(nn.Module):
         # 核心模块
         self.pcg_head = PCGHead(emb_dim=emb_dim, num_findings=num_findings)
         self.evidence_head = EvidenceHead(emb_dim=emb_dim)
+        self.evidence_graph_builder = EvidenceGraphBuilder(emb_dim=emb_dim)
 
         # LLM Backend (不是 nn.Module，单独管理)
         self.llm_backend = llm_backend or DummyLLM()
@@ -137,9 +139,18 @@ class ProveTokSystem(nn.Module):
         if use_refinement:
             def generator_fn(tokens: List[Token]) -> Generation:
                 if not tokens:
-                    return Generation(frames=[], citations={}, q={}, refusal={})
+                    return Generation(frames=[], citations={}, q={}, refusal={}, text="")
                 token_embs = torch.stack([t.embedding for t in tokens]).to(device)
-                return self.pcg_head.decode(token_embs, tokens)
+                # Build evidence graph -> constrained vocab (bounded claim space)
+                graph = self.evidence_graph_builder.build_graph(tokens, top_k=3, min_conf=0.1)
+                constrained_vocab = {
+                    "finding_type": get_constrained_vocab(graph, "finding_type"),
+                    "laterality": get_constrained_vocab(graph, "laterality"),
+                    "location": get_constrained_vocab(graph, "location"),
+                    "size_bin": get_constrained_vocab(graph, "size_bin"),
+                    "severity": get_constrained_vocab(graph, "severity"),
+                }
+                return self.pcg_head.decode(token_embs, tokens, constrained_vocab=constrained_vocab)
 
             def verifier_fn(gen: Generation, tokens: List[Token]) -> List[Issue]:
                 from ..verifier.rules import create_verifier

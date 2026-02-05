@@ -19,38 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ..types import Token
-from .schema import FINDINGS, LATERALITY, POLARITY
-
-
-# 解剖位置定义（Chest CT specific）
-LOCATIONS = [
-    # Lobes
-    "RUL", "RML", "RLL",  # Right upper/middle/lower lobe
-    "LUL", "LLL",          # Left upper/lower lobe (lingula part of LUL)
-    # Coarse
-    "right_lung", "left_lung", "bilateral",
-    "mediastinum", "heart", "pleura",
-    # General
-    "unspecified",
-]
-
-# 大小分级（nodule/mass specific）
-SIZE_BINS = [
-    "<3mm",
-    "3-5mm",
-    "6-8mm",
-    "9-20mm",
-    ">20mm",
-    "unspecified",
-]
-
-# 严重程度分级
-SEVERITY_LEVELS = [
-    "mild",
-    "moderate",
-    "severe",
-    "unspecified",
-]
+from .schema import FINDINGS, LATERALITY, POLARITY, LOCATIONS, SIZE_BINS, SEVERITY_LEVELS
 
 
 @dataclass(frozen=True)

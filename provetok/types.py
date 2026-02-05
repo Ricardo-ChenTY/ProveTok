@@ -19,6 +19,11 @@ class Frame:
     polarity: str
     laterality: str
     confidence: float
+    # Extended slots (paper-aligned). Defaults keep backward compatibility.
+    location: str = "unspecified"
+    size_bin: str = "unspecified"
+    severity: str = "unspecified"
+    uncertain: bool = False
 
 @dataclass(frozen=True)
 class Generation:
@@ -26,6 +31,7 @@ class Generation:
     citations: Dict[int, List[int]]   # frame_idx -> token_ids
     q: Dict[int, float]               # frame_idx -> accept prob
     refusal: Dict[int, bool]          # frame_idx -> refusal
+    text: str = ""                    # deterministic narrative (dual-channel protocol)
 
 @dataclass(frozen=True)
 class Issue:

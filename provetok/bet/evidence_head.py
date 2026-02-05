@@ -19,6 +19,7 @@ import numpy as np
 
 from ..types import Token, Issue, IssueType
 from ..grid.cells import Cell
+from ..verifier.taxonomy import ISSUE_SEVERITY_WEIGHTS, is_critical_finding
 
 
 @dataclass(frozen=True)
@@ -31,20 +32,7 @@ class EvidenceScore:
     slot_probs: Dict[str, float]  # 各 finding type 的预测概率
 
 
-# Severity 权重（根据 proposal: critical > non-critical）
-SEVERITY_WEIGHTS = {
-    3: 1.0,   # critical
-    2: 0.5,   # non-critical major
-    1: 0.2,   # non-critical minor
-}
-
-# Critical findings（根据 proposal §4.3.4）
-CRITICAL_FINDINGS = {
-    "pneumothorax",
-    "pleural_effusion",
-    "large_consolidation",
-    "suspicious_nodule",
-}
+SEVERITY_WEIGHTS = ISSUE_SEVERITY_WEIGHTS
 
 
 class EvidenceHead(nn.Module):
@@ -134,7 +122,7 @@ class EvidenceHead(nn.Module):
         # Critical findings 的边际概率（越高说明越需要细化）
         critical_mass = 0.0
         for i, name in enumerate(self.finding_names):
-            if name in CRITICAL_FINDINGS or any(cf in name for cf in CRITICAL_FINDINGS):
+            if is_critical_finding(name):
                 critical_mass += probs[i]
 
         # 不确定性 = 熵 + critical 概率加权

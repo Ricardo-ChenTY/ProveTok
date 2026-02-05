@@ -1,6 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Tuple
+import re
+from typing import Optional
 
 @dataclass(frozen=True, order=True)
 class Cell:
@@ -12,6 +14,31 @@ class Cell:
 
     def id(self) -> str:
         return f"L{self.level}:{self.ix},{self.iy},{self.iz}"
+
+_CELL_ID_RE = re.compile(r"^L(?P<level>\d+):\s*(?P<x>-?\d+)\s*,\s*(?P<y>-?\d+)\s*,\s*(?P<z>-?\d+)\s*$")
+_CELL_ID_LEGACY_RE = re.compile(r"^L(?P<level>\d+):\s*\(\s*(?P<x>-?\d+)\s*,\s*(?P<y>-?\d+)\s*,\s*(?P<z>-?\d+)\s*\)\s*$")
+
+
+def parse_cell_id(cell_id: str) -> Optional[Cell]:
+    """Parse canonical `cell_id` into a Cell.
+
+    Canonical format: `L{level}:{ix},{iy},{iz}` (no parentheses).
+    Legacy accepted:   `L{level}:(ix,iy,iz)`.
+    """
+    m = _CELL_ID_RE.match(cell_id)
+    if m is None:
+        m = _CELL_ID_LEGACY_RE.match(cell_id)
+    if m is None:
+        return None
+    try:
+        return Cell(
+            level=int(m.group("level")),
+            ix=int(m.group("x")),
+            iy=int(m.group("y")),
+            iz=int(m.group("z")),
+        )
+    except Exception:
+        return None
 
 def root_cell() -> Cell:
     return Cell(level=0, ix=0, iy=0, iz=0)

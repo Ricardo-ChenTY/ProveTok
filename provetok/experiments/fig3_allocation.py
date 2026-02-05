@@ -34,7 +34,7 @@ from ..eval.scaling import (
     AllocationResult,
     format_allocation_report,
 )
-from ..eval.metrics_grounding import compute_citation_grounding
+from ..eval.metrics_grounding import compute_generation_grounding
 from ..eval.metrics_frames import compute_frame_f1
 from .utils import (
     set_seed,
@@ -144,19 +144,9 @@ def _compute_performance(
     gt_frames = pred_frames[:max(1, len(pred_frames) - 1)]
     frame_metrics = compute_frame_f1(pred_frames, gt_frames, threshold=0.3)
 
-    # 计算 Grounding IoU
-    iou_scores = []
-    for frame_idx, cites in result.gen.citations.items():
-        if frame_idx in lesion_masks:
-            g_result = compute_citation_grounding(
-                citations=cites,
-                tokens=result.tokens,
-                lesion_mask=lesion_masks[frame_idx],
-                volume_shape=exp_config.volume_shape,
-            )
-            iou_scores.append(g_result["iou_union"])
-
-    iou = np.mean(iou_scores) if iou_scores else 0.0
+    # 计算 Grounding IoU（union-level，避免 frame_idx↔mask 索引不一致）
+    g = compute_generation_grounding(result.gen, result.tokens, lesion_masks, exp_config.volume_shape)
+    iou = float(g["iou_union"])
 
     # Combined score
     combined = 0.5 * frame_metrics.f1 + 0.5 * iou
