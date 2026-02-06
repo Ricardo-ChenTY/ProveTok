@@ -1,4 +1,4 @@
-# Gap Report (2026-02-05)
+# Gap Report (2026-02-06)
 
 本文件用于回答：“根据当前项目，完整列出还没做完的事情（实现差异 + 未跑实验）并落到 `docs/plan.md` / `docs/mohu.md` / `docs/experiment.md` 里”。
 
@@ -19,7 +19,7 @@
    - ✅ `E0162 (full)` passed：`outputs/E0162-full/**/figX_counterfactual.json`
    - ✅ `E0163 (full)` passed：`outputs/E0163-full/index.json`
    - ✅ `E0160P (full)` passed（preflight）：`outputs/E0160-preflight/fig2_multiseed.json`
-   - ⏳ `E0160 (full)` running：`outputs/E0160-full/`（见 `tmux attach -t rdq_oral_p0_e0160full`）
+   - ✅ `E0160 (full)` passed：`outputs/E0160-full/fig2_multiseed.json`
 
 ## 1) Repo 现状（“整个项目”）
 

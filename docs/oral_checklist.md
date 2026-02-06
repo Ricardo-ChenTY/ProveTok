@@ -17,8 +17,8 @@
   - 目的：把“toy→LLM”补齐到真实生成器，避免被质疑为 scaffolding。
   - Done when（最小）：
     - [x] Smoke 通过：输出 `outputs/E0160-smoke/fig2_multiseed.json`
-    - [ ] Full 通过：输出 `outputs/E0160-full/fig2_multiseed.json`
-    - [ ] 报告中包含：`warm_p95_s`（tail latency）+ `flops_total`（matched 口径）+ `per_seed` 路径
+    - [x] Full 通过：输出 `outputs/E0160-full/fig2_multiseed.json`
+    - [x] 报告中包含：`warm_p95_s`（tail latency）+ `flops_total`（matched 口径）+ `per_seed` 路径
   - 要求（最小口径）：
     - budgets：`{2e6, 5e6, 7e6}`（可扩到 6 budgets 做 paper-grade）
     - seeds：`{0,1,2}`（≥3）
@@ -30,7 +30,7 @@
     - `python -m provetok.experiments.fig2_scaling_multiseed --dataset-type manifest --manifest /data/provetok_datasets/rexgroundingct_100g/manifest.jsonl --split test --resize-shape 64 64 64 --budget-mode flops --budgets 2000000 3000000 4000000 5000000 6000000 7000000 --costs-json outputs/compute_costs.json --pcg llama2 --llama2-path /data/models/Llama-2-7b-chat-hf --llama2-quant fp16 --encoder cnn3d --encoder-device cuda --pcg-refresh-period 5 --max-steps 20 --n-samples 231 --seeds 0 1 2 --n-bootstrap 20000 --output-dir outputs/E0160-full`
   - Status（当前）：
     - preflight（`E0160P full`）已通过：`outputs/E0160-preflight/fig2_multiseed.json`
-    - full（`E0160 full`）正在跑：`python scripts/rd_queue.py start --queue .rd_queue/queue_E0160_full.json --session rdq_oral_p0_e0160full`
+    - full（`E0160 full`）已通过（2026-02-06 07:24 UTC）：`outputs/E0160-full/fig2_multiseed.json`
 
 ### A2. Allocation 不是“选一个方法”那么 trivial（Fig3 regret）
 - [x] **E0161 (NEW)**：在多个全局配置下（例如 `b_gen/n_verify/topk`）跑 dev/test curves，让曲线交叉，再用 `regret + CI` 证明 allocation model 真有用
