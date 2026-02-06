@@ -13,7 +13,7 @@
 ## A) 决定性实验（最小集合）
 
 ### A1. Real end-to-end（主图 Fig2 / Pareto / scaling）
-- [ ] **E0160 (NEW)**：`pcg=llama2` + `encoder=cnn3d` 在 `ReXGroundingCT-100g` 的多预算曲线（FLOPs-matched + latency 报表）
+- [x] **E0160 (NEW)**：`pcg=llama2` + `encoder=cnn3d` 在 `ReXGroundingCT-100g` 的多预算曲线（FLOPs-matched + latency 报表）
   - 目的：把“toy→LLM”补齐到真实生成器，避免被质疑为 scaffolding。
   - Done when（最小）：
     - [x] Smoke 通过：输出 `outputs/E0160-smoke/fig2_multiseed.json`

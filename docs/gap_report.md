@@ -10,11 +10,12 @@
 - Proof: `python scripts/proof_check.py` ✅（C0001–C0006 全部 proved，按最小 proof rule）
 - GPU: `NVIDIA RTX A6000` ✅
 - Data roots:
+  - `/data/provetok_datasets/rexgroundingct_100g`
   - `/data/provetok_datasets/rexgroundingct_mini`
   - `/data/provetok_datasets/ct_rate_100g`
   - `/data/models/Llama-2-7b-chat-hf`
- - `docs/results.md`：已同步 `.rd_queue/results/*.json` 的结果摘要（以 `python scripts/rd_queue.py sync` 为准）。
- - Oral P0（状态）：
+- `docs/results.md`：已同步 `.rd_queue/results/*.json` 的结果摘要（以 `python scripts/rd_queue.py sync` 为准）。
+- Oral P0（状态）：
    - ✅ `E0161 (full)` passed：`outputs/E0161-full/fig3_regret_sweep.json`
    - ✅ `E0162 (full)` passed：`outputs/E0162-full/**/figX_counterfactual.json`
    - ✅ `E0163 (full)` passed：`outputs/E0163-full/index.json`
