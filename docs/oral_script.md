@@ -16,6 +16,15 @@
 5) 最后是 **refusal**：当证据不足时系统拒答，但 critical miss-rate 不上升，且校准可控（ECE/可靠性）。  
 6) 全流程 artifacts 可审计：每个实验输出包含 `meta`（commit/data_revision/rule_set/schema/taxonomy），可一键重跑并逐 sample 复盘。
 
+## 1.5) Fig3 allocation：避免“后验挑配置”的口径（E0161）
+
+口头问：“你这不是后验挑一个最好的配置/曲线吗？”  
+回答（固定口径）：
+
+1) **候选空间预先锁定**：Fig3 的 tags（`b_gen/n_verify/topk`）在跑 test 之前就固定写进实验脚本与台账（见 `docs/oral_checklist.md` 的 E0161）。  
+2) **dev/test 严格分离**：只用 `split=val` 的 dev curves 拟合/选择 allocation policy；`split=test` 只做一次性评估，任何阈值/超参不在 test 上调。  
+3) **报告 regret+CI（不是挑点）**：用 `outputs/E0161-full/fig3_regret_sweep.json` 的 mean regret + bootstrap CI 证明“选配策略”整体优于 naive policy，而不是挑一个预算点讲故事。
+
 ## 2) 4 anti-reviewer questions (B3)
 
 1) **“是不是封嘴赢指标？”**  
@@ -68,4 +77,3 @@ python scripts/rd_queue.py sync
 1) `docs/results.md`：每条实验的结束时间、状态、输出 artifact 路径与关键指标摘要  
 2) `outputs/E0163-full/index.json`：case 索引；打开某个 `case.json` 看 tokens/citations/issues/trace；配合 `case.png` 解释 Ω 与 lesion 的空间关系  
 3) `python scripts/proof_check.py`：机器裁判输出（防止“口说无凭”）
-

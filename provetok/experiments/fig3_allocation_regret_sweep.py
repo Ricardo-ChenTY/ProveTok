@@ -350,6 +350,18 @@ def main() -> None:
         }
 
     boot_summary = {name: _ci_from_boot(xs) for name, xs in boot_samples.items()}
+    learned_ci = boot_summary.get("learned") or {"mean": 0.0, "ci_low": 0.0, "ci_high": 0.0}
+    boot_naive_out: Dict[str, Any] = {}
+    for name, rec in boot_summary.items():
+        if name == "learned":
+            continue
+        boot_naive_out[str(name)] = {
+            "mean_normalized_regret_ci_low": float(rec.get("ci_low", 0.0)),
+            "mean_normalized_regret_ci_high": float(rec.get("ci_high", 0.0)),
+        }
+
+    oracle_candidates = sorted({str(r.get("oracle_candidate", "")) for r in rows if r.get("oracle_candidate")})
+    is_nontrivial_case = len(oracle_candidates) > 1
 
     repo_root = Path(__file__).resolve().parents[2]
     meta = build_artifact_meta(
@@ -389,12 +401,23 @@ def main() -> None:
         "regret": {
             "mean_regret": mean_regret,
             "mean_normalized_regret": mean_norm_regret,
+            "per_budget": regrets,
+            "per_budget_normalized": norm_regrets,
+            "is_nontrivial_case": bool(is_nontrivial_case),
             "bootstrap": {
                 "n_bootstrap": int(n_boot),
                 "ci": float(ci),
+                "seed": int(args.seed),
+                "mean_normalized_regret_ci_low": float(learned_ci.get("ci_low", 0.0)),
+                "mean_normalized_regret_ci_high": float(learned_ci.get("ci_high", 0.0)),
+                "naive_policies": boot_naive_out,
                 "policies": boot_summary,
                 "naive_point": naive_point,
             },
+        },
+        "naive_policies": {
+            "definitions": {name: {str(k): str(v) for k, v in pol.items()} for name, pol in naive_policies.items()},
+            "point_estimates": naive_point,
         },
     }
 
@@ -405,4 +428,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

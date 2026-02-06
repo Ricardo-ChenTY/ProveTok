@@ -53,14 +53,20 @@
 ### 2.2 C0003（counterfactual non-triviality）
 
 更强版本缺口：
-- ✅ **已补齐 non-oracle `omega_perm` 的显著击穿（`iou_union` 口径）**：`E0136 (full)` 通过（`p_holm=0.0464`；见 `docs/results.md` 与 `docs/proof_audit.md`）。
-- 仍可进一步增强：若希望 `iou_max` 口径也稳定显著（本次 `p_holm=0.1672`），需要更强 citations↔lesion 对齐或改进指标/功效。
+- ✅ **optional stronger check 已补齐：non-oracle `omega_perm` 现在可在 `iou_union` 与 `iou_max` 两个口径上显著击穿 grounding**（见 `docs/proof_audit.md` 的 C0003 “Optional stronger check”，以及对应的 `outputs/E0157-full/**/figX_counterfactual.json`）。
+- 仍可进一步增强（更像“顶会 oral”而非“能过最低线”）：
+  - 做 multi-seed / 更大样本复验（目前 stronger check 依赖更强 citations↔lesion 对齐策略，仍可能被质疑为“个例”）。
+  - 把该 stronger check 升格为主 proof rule（需要同步更新 `docs/plan.md` + `scripts/proof_check.py`，避免后验）。
 
 ### 2.3 C0006（baseline completeness + fairness）
 
 更强版本缺口：
 - **强 3D RRG baseline**：`ct2rep_like` 仍是协议占位，建议替换为公开可复现强基线。
 - **跨域闭环**：CT-3DRRG 的端到端训练/评测与 matched 对齐仍建议补齐（作为 “generalization” 结果）。
+
+## 4) vNext（Oral+）最小决定性补齐清单
+
+如果目标从 “P0 oral-ready” 升级为 “冲顶会 oral（更强版本）”，建议按 `docs/oral_checklist_vnext.md` 的 checklist 逐条补齐（含每条 risk 的可执行路径/产物/通过条件）。
 
 ## 3) 工程闭环的小修复（.rd_queue）
 

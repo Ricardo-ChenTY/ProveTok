@@ -19,7 +19,9 @@ pip install -r requirements.txt
 
 ```bash
 pytest -q
-python scripts/proof_check.py
+python scripts/proof_check.py --profile default
+python scripts/proof_check.py --profile real
+python scripts/oral_audit.py --sync --out outputs/oral_audit.json
 ```
 
 ---
@@ -90,6 +92,12 @@ python scripts/rd_queue.py start --queue .rd_queue/queue_E0162_full.json --sessi
 python scripts/rd_queue.py sync
 ```
 
+一键审计（默认 + real 双 profile + oral 关键产物索引 + gap 汇总）：
+
+```bash
+python scripts/oral_audit.py --sync --out outputs/oral_audit.json --strict
+```
+
 > 说明：`outputs/` 与 `.rd_queue/` 默认不入库（见 `.gitignore`）。可复现路径以 `docs/experiment.md`（命令）与 `docs/results.md`（产物路径）为准。
 
 ---
@@ -116,5 +124,5 @@ python scripts/train_m0.py --config configs/m0.yaml --stage M1 --device cpu
 
 - `docs/plan.md`：Claims（C0001–C0006）+ proof rules（paper-grade）
 - `docs/experiment.md`：实验台账（E####）+ 可运行命令（smoke/full）
-- `docs/results.md`：从 `.rd_queue/results/*.json` 同步的结果摘要（产物路径 + 指标摘要）
+- `docs/results.md`：从 `.rd_queue/results/*.json` 同步的结果摘要（产物路径 + 指标摘要 + `margin_to_threshold`）
 - `docs/proof_audit.md` / `docs/proof_strength_report.md`：proof 判定逻辑与强弱评估

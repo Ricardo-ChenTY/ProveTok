@@ -38,7 +38,7 @@
   - Done when（最小）：
     - [x] 至少 4 个 tag 的 dev/test curves 都产出（且曲线确实交叉）
     - [x] `fig3_regret_sweep.json` 给出 `mean_normalized_regret` 的 CI，并**显著优于** naive（always_fixed_grid）
-    - [ ] 口头能回答：“为什么不是后验挑配置？”（dev=val 拟合，test=test 评估）
+    - [x] 口头能回答：“为什么不是后验挑配置？”（dev=val 拟合，test=test 评估；见 `docs/oral_script.md` 的 §1.5）
   - 最小候选（示例 4 个 tags）：
     - `bg128_nv1_topk3`：`--b-gen 128 --n-verify 1 --topk-citations 3`
     - `bg64_nv1_topk3`：`--b-gen 64 --n-verify 1 --topk-citations 3`
@@ -74,12 +74,10 @@
   - “refusal 为什么触发/不触发？有没有封嘴？”
   - Done when（最小）：
     - [x] 每个 case 输出：`case.json`（gen+issues+trace+meta）+ `case.png`（Ω+lesion overlay）
-    - [ ] oral slide 里放 1 个“正例”、1 个“refusal 例”、1 个“失败例 + 可解释原因”
-      - 当前已产出 `E0163-full`：`outputs/E0163-full/index.json`（共 5 个 cases）
-      - 可先用作“正例/弱例”的候选：
-        - 正例候选（IoU_union 较高）：`case_9404470...`（见 `outputs/E0163-full/index.json`）
-        - 弱例候选（IoU_union 较低，可讲 failure mode）：`case_cc8e4ac...`（见 `outputs/E0163-full/index.json`）
-      - 仍缺：明确的 refusal case（需要后续定向采样/构造）
+    - [x] oral slide 里放 1 个“正例”、1 个“refusal 例”、1 个“失败例 + 可解释原因”
+      - 正例（verifier=0 issue，IoU_union≈0.041）：`outputs/E0163-onecase-topk20/case_01af84bdb6480e161f6ad8a5b7c6c8c23828cae419658144f8207454f6627ac9/case.json` + `outputs/E0163-onecase-topk20/case_01af84bdb6480e161f6ad8a5b7c6c8c23828cae419658144f8207454f6627ac9/case.png`
+      - refusal 例（refusal=1，IoU_union=0）：`outputs/E0163-full-v2/case_9f95d626c7ff5809483d155681ad00a39776dcb1a6ce1117fe03239df28a4bbe/case.json` + `outputs/E0163-full-v2/case_9f95d626c7ff5809483d155681ad00a39776dcb1a6ce1117fe03239df28a4bbe/case.png`
+      - 失败例（U1_unsupported(sev>=2)，IoU_union=0）：`outputs/E0163-full-v3/case_44f4a3967bcd3c14467f0e3fa18de1a4a0e313fc261b37a58830c18d1b430c57/case.json` + `outputs/E0163-full-v3/case_44f4a3967bcd3c14467f0e3fa18de1a4a0e313fc261b37a58830c18d1b430c57/case.png`
 
 ## B) 叙事清单（oral 讲法必须闭环）
 
@@ -96,5 +94,7 @@
 
 ## D) 可选但很“加分”（仅在 P0 都过后再做）
 
-- [ ] **D1 LLM refusal pilot**：在 `pcg=llama2` 设定下做一次 τ_refuse 的 dev→test 校准（只需要 1 budget + n=50），验证 critical miss-rate gate 不被“封嘴”绕过
-- [ ] **D2 Cross-dataset sanity**：在第二个 manifest（如 CT-RATE/CT-3DRRG）上复现 E0162(smoke) 或 E0160(smoke)，只为说明“不是只对一个数据集会跑”
+- [x] **D1 LLM refusal pilot**：在 `pcg=llama2` 设定下做一次 τ_refuse 的 dev→test 校准（只需要 1 budget + n=50），验证 critical miss-rate gate 不被“封嘴”绕过
+  - 产物（dev→test frozen τ）：`outputs/D1-llama2-refusal-pilot/figX_refusal_calibration_llama2_pilot.json` + `outputs/D1-llama2-refusal-pilot/refusal_policy.json`
+- [x] **D2 Cross-dataset sanity**：在第二个 manifest（如 CT-RATE/CT-3DRRG）上复现 E0162(smoke) 或 E0160(smoke)，只为说明“不是只对一个数据集会跑”
+  - 已完成（CT-RATE-100g，no `mask_path`，只做 pipeline sanity）：`outputs/E0160-ct_rate-smoke/fig2_multiseed.json`

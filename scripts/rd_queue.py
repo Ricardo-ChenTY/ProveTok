@@ -361,6 +361,110 @@ def _extract_key_metrics(artifact_path: Path) -> str:
     return artifact_path.name
 
 
+def _extract_margin_to_threshold(artifact_path: Path) -> str:
+    try:
+        d = json.loads(artifact_path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+
+    name = artifact_path.name
+    if name in {"fig3_results.json", "fig3_regret_sweep.json"}:
+        regret = d.get("regret") or {}
+        boot = (regret.get("bootstrap") or {}) if isinstance(regret, dict) else {}
+        ci_high = None
+        if isinstance(boot, dict):
+            if "mean_normalized_regret_ci_high" in boot:
+                ci_high = boot.get("mean_normalized_regret_ci_high")
+            else:
+                learned = ((boot.get("policies") or {}).get("learned") or {}) if isinstance(boot.get("policies"), dict) else {}
+                if isinstance(learned, dict):
+                    ci_high = learned.get("ci_high")
+        if isinstance(ci_high, (int, float)):
+            margin = float(0.15 - float(ci_high))
+            return f"regret_ci_margin={margin:+.4f}"
+        return ""
+
+    if name == "figX_refusal_calibration.json":
+        rows = ((d.get("test") or {}).get("rows") or []) if isinstance(d.get("test"), dict) else []
+        if not isinstance(rows, list) or not rows:
+            return ""
+        miss_margin = float("inf")
+        ece_margin = float("inf")
+        refusal_margin = float("inf")
+        for row in rows:
+            cal = row.get("calibrated") or {}
+            miss = cal.get("critical_miss_rate")
+            ece = cal.get("refusal_ece")
+            rr = cal.get("refusal_rate")
+            if isinstance(miss, (int, float)):
+                miss_margin = min(miss_margin, 0.05 - float(miss))
+            if isinstance(ece, (int, float)):
+                ece_margin = min(ece_margin, 0.15 - float(ece))
+            if isinstance(rr, (int, float)):
+                refusal_margin = min(refusal_margin, 0.20 - float(rr))
+        parts: List[str] = []
+        if miss_margin != float("inf"):
+            parts.append(f"miss={miss_margin:+.4f}")
+        if ece_margin != float("inf"):
+            parts.append(f"ece={ece_margin:+.4f}")
+        if refusal_margin != float("inf"):
+            parts.append(f"refusal={refusal_margin:+.4f}")
+        return ",".join(parts)
+
+    if name == "figX_grounding_proof.json":
+        pb = d.get("paired_bootstrap") or {}
+        if not isinstance(pb, dict) or not pb:
+            return ""
+        min_mean = float("inf")
+        min_p_margin = float("inf")
+        for budget_rec in pb.values():
+            if not isinstance(budget_rec, dict):
+                continue
+            for baseline in ["fixed_grid", "roi_variance"]:
+                rec = ((budget_rec.get(baseline) or {}).get("iou_union") or {}) if isinstance(budget_rec.get(baseline), dict) else {}
+                mean_diff = rec.get("mean_diff")
+                p_val = rec.get("p_value_holm", rec.get("p_value"))
+                if isinstance(mean_diff, (int, float)):
+                    min_mean = min(min_mean, float(mean_diff))
+                if isinstance(p_val, (int, float)):
+                    min_p_margin = min(min_p_margin, 0.05 - float(p_val))
+        parts = []
+        if min_mean != float("inf"):
+            parts.append(f"min_delta_iou={min_mean:+.4f}")
+        if min_p_margin != float("inf"):
+            parts.append(f"min_p_margin={min_p_margin:+.4f}")
+        return ",".join(parts)
+
+    if name == "figX_counterfactual.json":
+        pb = d.get("paired_bootstrap") or {}
+        if not isinstance(pb, dict):
+            return ""
+        no_cite = (pb.get("grounding_iou_union_orig_minus_cf") or {}).get("no_cite") if isinstance(pb.get("grounding_iou_union_orig_minus_cf"), dict) else None
+        cite_swap = (pb.get("unsupported_rate_cf_minus_orig") or {}).get("cite_swap") if isinstance(pb.get("unsupported_rate_cf_minus_orig"), dict) else None
+        parts: List[str] = []
+        if isinstance(no_cite, dict):
+            p = no_cite.get("p_value_holm", no_cite.get("p_value"))
+            if isinstance(p, (int, float)):
+                parts.append(f"no_cite_p_margin={0.05-float(p):+.4f}")
+        if isinstance(cite_swap, dict):
+            p = cite_swap.get("p_value_holm", cite_swap.get("p_value"))
+            if isinstance(p, (int, float)):
+                parts.append(f"cite_swap_p_margin={0.05-float(p):+.4f}")
+        return ",".join(parts)
+
+    if name == "baselines_curve_multiseed.json":
+        frame_f1_rows = (((d.get("metrics") or {}).get("frame_f1") or {}).get("ct2rep_strong") or [])
+        if isinstance(frame_f1_rows, list) and frame_f1_rows:
+            last = frame_f1_rows[-1]
+            if isinstance(last, dict):
+                mean = last.get("mean")
+                if isinstance(mean, (int, float)):
+                    return f"ct2rep_f1_margin={float(mean)-0.05:+.4f}"
+        return ""
+
+    return ""
+
+
 def _write_results_md(*, root: Path, results_dir: Path) -> Path:
     out = root / "docs" / "results.md"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -381,8 +485,8 @@ def _write_results_md(*, root: Path, results_dir: Path) -> Path:
         "",
         "Generated by `python scripts/rd_queue.py sync` from `.rd_queue/results/*.json`.",
         "",
-        "| ended_at | id | stage | status | output | key metrics | log |",
-        "|---|---|---|---|---|---|---|",
+        "| ended_at | id | stage | status | output | key metrics | margin_to_threshold | log |",
+        "|---|---|---|---|---|---|---|---|",
     ]
 
     for r in rows:
@@ -396,6 +500,7 @@ def _write_results_md(*, root: Path, results_dir: Path) -> Path:
         out_dir = _infer_output_dir(cmd)
         output_cell = out_dir
         metrics_cell = ""
+        margin_cell = ""
         if out_dir:
             out_path = Path(out_dir)
             if not out_path.is_absolute():
@@ -421,6 +526,7 @@ def _write_results_md(*, root: Path, results_dir: Path) -> Path:
                 if art is not None:
                     output_cell = str(art.relative_to(root)) if root in art.parents else str(art)
                     metrics_cell = _extract_key_metrics(art)
+                    margin_cell = _extract_margin_to_threshold(art)
                     break
 
         # Escape pipes
@@ -437,6 +543,7 @@ def _write_results_md(*, root: Path, results_dir: Path) -> Path:
                     esc(status),
                     esc(output_cell),
                     esc(metrics_cell),
+                    esc(margin_cell),
                     esc(log_path),
                 ]
             )

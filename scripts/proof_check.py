@@ -11,6 +11,7 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[1]
+ACTIVE_PROFILE = "default"
 
 
 @dataclass(frozen=True)
@@ -105,6 +106,17 @@ def _find_latest(patterns: List[str], *, preferred_roots: Optional[List[Path]] =
     return candidates[0]
 
 
+def _profile_is_real() -> bool:
+    return str(ACTIVE_PROFILE).lower() == "real"
+
+
+def _resolve_path(path_str: str) -> Path:
+    p = Path(str(path_str))
+    if p.is_absolute():
+        return p
+    return (ROOT / p).resolve()
+
+
 def _load_fig2_multiseed(path: Path) -> Dict[str, Any]:
     d = _read_json(path)
     budgets = [int(x) for x in d.get("budgets", [])]
@@ -158,22 +170,39 @@ def _compare_curves_same_budgets(
 
 def check_c0001() -> ClaimCheck:
     """Pareto dominate in matched compute with paper-grade latency/trust constraints."""
-    preferred = ROOT / "outputs" / "E0138-full" / "baselines_curve_multiseed.json"
     base_path = None
-    if preferred.exists():
-        base_path = preferred
+    if _profile_is_real():
+        preferred = ROOT / "outputs" / "E0164-full" / "baselines_curve_multiseed.json"
+        if preferred.exists():
+            base_path = preferred
+        else:
+            base_path = _find_latest(
+                patterns=["E0164*/baselines_curve_multiseed.json"],
+                preferred_roots=[ROOT / "outputs"],
+            )
+        if base_path is None:
+            return ClaimCheck(
+                claim_id="C0001",
+                proved=False,
+                summary="missing real-profile artifact for C0001 (expected E0164 baselines_curve_multiseed on split=test).",
+                details={"profile": ACTIVE_PROFILE},
+            )
     else:
-        candidates = list((ROOT / "outputs").glob("**/baselines_curve_multiseed.json"))
-        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-        for p in candidates:
-            try:
-                d = _read_json(p)
-                split = str(((d.get("meta") or {}).get("config") or {}).get("split", ""))
-                if split == "test":
-                    base_path = p
-                    break
-            except Exception:
-                continue
+        preferred = ROOT / "outputs" / "E0138-full" / "baselines_curve_multiseed.json"
+        if preferred.exists():
+            base_path = preferred
+        else:
+            candidates = list((ROOT / "outputs").glob("**/baselines_curve_multiseed.json"))
+            candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            for p in candidates:
+                try:
+                    d = _read_json(p)
+                    split = str(((d.get("meta") or {}).get("config") or {}).get("split", ""))
+                    if split == "test":
+                        base_path = p
+                        break
+                except Exception:
+                    continue
 
     if base_path is None:
         return ClaimCheck(
@@ -483,16 +512,37 @@ def check_c0001() -> ClaimCheck:
 
 def check_c0004() -> ClaimCheck:
     """Pixel-level citation grounding significantly improves on ReXGroundingCT (paper-grade)."""
-    preferred = ROOT / "outputs" / "E0143-full" / "figX_grounding_proof.json"
-    path = preferred if preferred.exists() else None
-    if path is None:
-        path = _find_latest(
-            patterns=[
-                "E0143*/figX_grounding_proof.json",
-                "**/figX_grounding_proof.json",
-            ],
-            preferred_roots=[ROOT / "outputs"],
-        )
+    path: Optional[Path] = None
+    if _profile_is_real():
+        preferred = ROOT / "outputs" / "E0156-grounding_proof_100g_saliency_full" / "figX_grounding_proof.json"
+        if preferred.exists():
+            path = preferred
+        else:
+            path = _find_latest(
+                patterns=[
+                    "E0165*/figX_grounding_proof.json",
+                    "E0156*/figX_grounding_proof.json",
+                ],
+                preferred_roots=[ROOT / "outputs"],
+            )
+        if path is None:
+            return ClaimCheck(
+                "C0004",
+                proved=False,
+                summary="missing real-profile artifact for C0004 (expected E0156/E0165 figX_grounding_proof.json).",
+                details={"profile": ACTIVE_PROFILE},
+            )
+    else:
+        preferred = ROOT / "outputs" / "E0143-full" / "figX_grounding_proof.json"
+        path = preferred if preferred.exists() else None
+        if path is None:
+            path = _find_latest(
+                patterns=[
+                    "E0143*/figX_grounding_proof.json",
+                    "**/figX_grounding_proof.json",
+                ],
+                preferred_roots=[ROOT / "outputs"],
+            )
     if path is None:
         return ClaimCheck("C0004", proved=False, summary="missing figX_grounding_proof.json artifact", details={})
 
@@ -601,18 +651,31 @@ def check_c0004() -> ClaimCheck:
 
 def check_c0003() -> ClaimCheck:
     """Counterfactual suite significant break (scaffold check)."""
-    preferred_roots = [
-        ROOT / "outputs" / "E0113-full",
-        ROOT / "outputs" / "E0109-full",
-        ROOT / "outputs" / "E0004-full",
-    ]
-    candidates = []
-    for r in preferred_roots:
-        candidates.extend(list(r.glob("**/figX_counterfactual.json")))
-    if not candidates:
-        candidates = list((ROOT / "outputs").glob("**/figX_counterfactual.json"))
-    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    path = candidates[0] if candidates else None
+    path: Optional[Path] = None
+    if _profile_is_real():
+        candidates = list((ROOT / "outputs").glob("E0162*/**/figX_counterfactual.json"))
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        path = candidates[0] if candidates else None
+        if path is None:
+            return ClaimCheck(
+                "C0003",
+                proved=False,
+                summary="missing real-profile artifact for C0003 (expected E0162*/**/figX_counterfactual.json).",
+                details={"profile": ACTIVE_PROFILE},
+            )
+    else:
+        preferred_roots = [
+            ROOT / "outputs" / "E0113-full",
+            ROOT / "outputs" / "E0109-full",
+            ROOT / "outputs" / "E0004-full",
+        ]
+        candidates = []
+        for r in preferred_roots:
+            candidates.extend(list(r.glob("**/figX_counterfactual.json")))
+        if not candidates:
+            candidates = list((ROOT / "outputs").glob("**/figX_counterfactual.json"))
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        path = candidates[0] if candidates else None
     if path is None:
         return ClaimCheck("C0003", proved=False, summary="missing figX_counterfactual.json", details={})
 
@@ -665,30 +728,86 @@ def check_c0003() -> ClaimCheck:
 
 
 def check_c0002() -> ClaimCheck:
-    preferred = ROOT / "outputs" / "E0141-full" / "fig3_results.json"
-    path = preferred if preferred.exists() else None
+    path: Optional[Path] = None
+    if _profile_is_real():
+        preferred = ROOT / "outputs" / "E0161-full" / "fig3_regret_sweep.json"
+        if preferred.exists():
+            path = preferred
+        else:
+            path = _find_latest(
+                patterns=[
+                    "E0161*/fig3_regret_sweep.json",
+                    "E0161*/fig3_results.json",
+                ],
+                preferred_roots=[ROOT / "outputs"],
+            )
+        if path is None:
+            return ClaimCheck(
+                "C0002",
+                proved=False,
+                summary="missing real-profile artifact for C0002 (expected E0161 fig3_regret_sweep/results).",
+                details={"profile": ACTIVE_PROFILE},
+            )
+    else:
+        preferred = ROOT / "outputs" / "E0141-full" / "fig3_results.json"
+        path = preferred if preferred.exists() else None
+        if path is None:
+            path = _find_latest(
+                patterns=[
+                    "E0141*/fig3_results.json",
+                    "E0141*/fig3_regret_sweep.json",
+                    "fig3_allocation/fig3_results.json",
+                    "**/fig3_results.json",
+                ],
+                preferred_roots=[ROOT / "outputs"],
+            )
     if path is None:
-        path = _find_latest(
-            patterns=[
-                "E0141*/fig3_results.json",
-                "fig3_allocation/fig3_results.json",
-                "**/fig3_results.json",
-            ],
-            preferred_roots=[ROOT / "outputs"],
-        )
-    if path is None:
-        return ClaimCheck("C0002", proved=False, summary="missing fig3 allocation artifact (fig3_results.json).", details={})
+        return ClaimCheck("C0002", proved=False, summary="missing fig3 allocation artifact (fig3_results/fig3_regret_sweep).", details={})
 
     d = _read_json(path)
     cfg = d.get("config") or {}
     dev = d.get("dev") or {}
     test = d.get("test") or {}
-    rows = d.get("rows") or []
+    rows = d.get("rows") or (test.get("rows") if isinstance(test, dict) else []) or []
 
-    dev_split = str(cfg.get("dev_split", ""))
-    test_split = str(cfg.get("test_split", ""))
-    dataset_type = str((d.get("meta") or {}).get("config", {}).get("dataset_type", cfg.get("dataset_type", "")))
+    source_schema = "fig3_regret_sweep" if str(path.name) == "fig3_regret_sweep.json" else "fig3_results"
+
+    meta_cfg = (d.get("meta") or {}).get("config", {}) or {}
+    dev_split = str(cfg.get("dev_split", meta_cfg.get("dev_split", "")))
+    test_split = str(cfg.get("test_split", meta_cfg.get("test_split", "")))
+    dataset_type = str(meta_cfg.get("dataset_type", cfg.get("dataset_type", "")))
     fits = (dev.get("fits") or {}) if isinstance(dev, dict) else {}
+
+    def _infer_curve_meta(curve_map: Any) -> Tuple[str, str]:
+        if not isinstance(curve_map, dict):
+            return ("", "")
+        for _, curve_path in curve_map.items():
+            if not curve_path:
+                continue
+            cp = _resolve_path(str(curve_path))
+            if not cp.exists():
+                continue
+            try:
+                cd = _read_json(cp)
+            except Exception:
+                continue
+            cmeta = (cd.get("meta") or {}).get("config", {}) or {}
+            c_dataset_type = str(cmeta.get("dataset_type", ""))
+            c_split = str(cmeta.get("split", ""))
+            if c_dataset_type or c_split:
+                return (c_dataset_type, c_split)
+        return ("", "")
+
+    dev_curves = cfg.get("dev_curves") or {}
+    test_curves = cfg.get("test_curves") or {}
+    dev_dt, dev_split_inferred = _infer_curve_meta(dev_curves)
+    test_dt, test_split_inferred = _infer_curve_meta(test_curves)
+    if not dev_split:
+        dev_split = dev_split_inferred
+    if not test_split:
+        test_split = test_split_inferred
+    if not dataset_type:
+        dataset_type = dev_dt or test_dt
 
     has_dev_test = bool(dev_split) and bool(test_split) and (dev_split != test_split)
     has_fits = isinstance(fits, dict) and bool(fits)
@@ -700,15 +819,34 @@ def check_c0002() -> ClaimCheck:
 
     regret = d.get("regret") or {}
     boot = (regret.get("bootstrap") or {}) if isinstance(regret, dict) else {}
-    n_boot = int(boot.get("n_bootstrap", 0)) if isinstance(boot, dict) else 0
-    ci_high = float(boot.get("mean_normalized_regret_ci_high", 1.0)) if isinstance(boot, dict) else 1.0
-    naive = (boot.get("naive_policies") or {}) if isinstance(boot, dict) else {}
-    naive_fixed = naive.get("always_fixed_grid") or {}
-    naive_ci_low = float(naive_fixed.get("mean_normalized_regret_ci_low", 1.0)) if isinstance(naive_fixed, dict) else 1.0
+    n_boot = int(boot.get("n_bootstrap", cfg.get("n_bootstrap", 0))) if isinstance(boot, dict) else int(cfg.get("n_bootstrap", 0))
+
+    ci_high_opt: Optional[float] = None
+    if isinstance(boot, dict):
+        if "mean_normalized_regret_ci_high" in boot:
+            ci_high_opt = float(boot.get("mean_normalized_regret_ci_high", 1.0))
+        else:
+            policies = (boot.get("policies") or {}) if isinstance(boot.get("policies"), dict) else {}
+            learned = (policies.get("learned") or {}) if isinstance(policies.get("learned"), dict) else {}
+            if "ci_high" in learned:
+                ci_high_opt = float(learned.get("ci_high", 1.0))
+    ci_high = float(ci_high_opt) if ci_high_opt is not None else 1.0
+
+    naive_ci_low = 1.0
+    if isinstance(boot, dict):
+        naive = (boot.get("naive_policies") or {}) if isinstance(boot.get("naive_policies"), dict) else {}
+        naive_fixed = naive.get("always_fixed_grid") or {}
+        if isinstance(naive_fixed, dict) and ("mean_normalized_regret_ci_low" in naive_fixed):
+            naive_ci_low = float(naive_fixed.get("mean_normalized_regret_ci_low", 1.0))
+        else:
+            policies = (boot.get("policies") or {}) if isinstance(boot.get("policies"), dict) else {}
+            naive_fixed_old = policies.get("always_fixed_grid") or {}
+            if isinstance(naive_fixed_old, dict) and ("ci_low" in naive_fixed_old):
+                naive_ci_low = float(naive_fixed_old.get("ci_low", 1.0))
 
     budgets = cfg.get("budgets") or []
     has_enough_budgets = isinstance(budgets, list) and (len(budgets) >= 6)
-    has_bootstrap = bool(isinstance(boot, dict) and ("mean_normalized_regret_ci_high" in boot))
+    has_bootstrap = bool(isinstance(boot, dict) and (ci_high_opt is not None))
     paper_ok = bool(has_enough_budgets and (n_boot >= 20_000) and (ci_high <= 0.15) and (ci_high < naive_ci_low))
 
     proved = bool(has_dev_test and has_fits and has_aic_bic and has_regret_rows and (dataset_type == "manifest") and has_bootstrap and paper_ok)
@@ -722,6 +860,8 @@ def check_c0002() -> ClaimCheck:
         ),
         details={
             "path": str(path),
+            "profile": ACTIVE_PROFILE,
+            "schema": source_schema,
             "dataset_type": dataset_type,
             "dev_split": dev_split,
             "test_split": test_split,
@@ -837,16 +977,36 @@ def check_c0005() -> ClaimCheck:
 
 
 def check_c0006() -> ClaimCheck:
-    preferred = ROOT / "outputs" / "E0138-full" / "baselines_curve_multiseed.json"
-    path = preferred if preferred.exists() else None
-    if path is None:
-        path = _find_latest(
-            patterns=[
-                "E0138*/baselines_curve_multiseed.json",
-                "**/baselines_curve_multiseed.json",
-            ],
-            preferred_roots=[ROOT / "outputs"],
-        )
+    path: Optional[Path] = None
+    if _profile_is_real():
+        preferred = ROOT / "outputs" / "E0164-full" / "baselines_curve_multiseed.json"
+        if preferred.exists():
+            path = preferred
+        else:
+            path = _find_latest(
+                patterns=[
+                    "E0164*/baselines_curve_multiseed.json",
+                ],
+                preferred_roots=[ROOT / "outputs"],
+            )
+        if path is None:
+            return ClaimCheck(
+                "C0006",
+                proved=False,
+                summary="missing real-profile artifact for C0006 (expected E0164 baselines_curve_multiseed).",
+                details={"profile": ACTIVE_PROFILE},
+            )
+    else:
+        preferred = ROOT / "outputs" / "E0138-full" / "baselines_curve_multiseed.json"
+        path = preferred if preferred.exists() else None
+        if path is None:
+            path = _find_latest(
+                patterns=[
+                    "E0138*/baselines_curve_multiseed.json",
+                    "**/baselines_curve_multiseed.json",
+                ],
+                preferred_roots=[ROOT / "outputs"],
+            )
     if path is None:
         return ClaimCheck("C0006", proved=False, summary="missing baselines_curve_multiseed.json artifact.", details={})
 
@@ -868,7 +1028,7 @@ def check_c0006() -> ClaimCheck:
     # - strong baseline being non-degenerate on manifest labels (frame_f1 > 0)
     frame_f1_rows = (((d.get("metrics") or {}).get("frame_f1") or {}).get("ct2rep_strong") or [])
     strong_frame_f1 = float(frame_f1_rows[-1].get("mean", 0.0)) if frame_f1_rows else 0.0
-    weights_ok = bool(strong_weights and Path(strong_weights).exists())
+    weights_ok = bool(strong_weights and _resolve_path(strong_weights).exists())
     min_frame_f1 = 0.05
     f1_ok = bool(strong_frame_f1 >= float(min_frame_f1) - 1e-12)
 
@@ -891,6 +1051,7 @@ def check_c0006() -> ClaimCheck:
         ),
         details={
             "path": str(path),
+            "profile": ACTIVE_PROFILE,
             "methods": methods,
             "costs_json": costs_json,
             "has_budget_accounting": bool(has_budget_accounting),
@@ -906,9 +1067,12 @@ def check_c0006() -> ClaimCheck:
 
 
 def main() -> int:
+    global ACTIVE_PROFILE
     ap = argparse.ArgumentParser(description="Quick proof-status checker for docs/plan.md claims (scaffold).")
     ap.add_argument("--out", type=str, default="", help="Optional path to write a JSON report.")
+    ap.add_argument("--profile", type=str, choices=["default", "real"], default="default", help="Artifact profile to check (default|real).")
     args = ap.parse_args()
+    ACTIVE_PROFILE = str(args.profile).strip().lower()
 
     checks = [
         check_c0001(),
@@ -920,6 +1084,7 @@ def main() -> int:
     ]
     report = {
         "root": str(ROOT),
+        "profile": ACTIVE_PROFILE,
         "checks": [
             {
                 "claim_id": c.claim_id,

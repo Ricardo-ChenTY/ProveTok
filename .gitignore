@@ -53,3 +53,8 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Node (not used in this repo; occasionally created accidentally)
+node_modules/
+package-lock.json
+package.json

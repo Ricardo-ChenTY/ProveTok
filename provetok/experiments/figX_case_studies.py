@@ -95,6 +95,16 @@ def _select_positive_cited_ids(gen: Generation) -> List[int]:
     return sorted(ids)
 
 
+def _classify_case(*, iou_union: float, num_issues: int, has_refusal: bool) -> str:
+    """Assign an oral-facing case label with deterministic heuristics."""
+    if bool(has_refusal):
+        return "refusal"
+    # Keep thresholds simple and stable; this is a presentation label, not a training target.
+    if float(iou_union) >= 0.001 and int(num_issues) == 0:
+        return "positive"
+    return "failure"
+
+
 def _save_case_png(
     *,
     out_path: Path,
@@ -192,6 +202,12 @@ def main() -> None:
     ap.add_argument("--max-steps", type=int, default=20)
     ap.add_argument("--topk-citations", type=int, default=3)
     ap.add_argument(
+        "--tau-refuse",
+        type=float,
+        default=0.55,
+        help="Refusal threshold τ: mark refusal when q_k < τ for positive frames.",
+    )
+    ap.add_argument(
         "--require-full-budget",
         action="store_true",
         help="Spend b_enc_target when possible (may increase steps significantly).",
@@ -229,6 +245,7 @@ def main() -> None:
             "pcg_refresh_period": int(args.pcg_refresh_period),
             "max_steps": int(args.max_steps),
             "topk_citations": int(args.topk_citations),
+            "tau_refuse": float(args.tau_refuse),
             "require_full_budget": bool(args.require_full_budget),
             "llama2_path": str(args.llama2_path),
             "llama2_quant": str(args.llama2_quant),
@@ -257,6 +274,7 @@ def main() -> None:
             max_new_tokens=max(128, int(args.b_gen)),
             temperature=0.0,
             topk_citations=int(args.topk_citations),
+            tau_refuse=float(args.tau_refuse),
         )
     )
 
@@ -382,6 +400,12 @@ def main() -> None:
                 "union_voxels": int(uni),
                 "iou_union": float(iou),
             },
+            "case_type": _classify_case(
+                iou_union=float(iou),
+                num_issues=int(len(issues)),
+                has_refusal=any(bool(v) for v in (gen.refusal or {}).values()),
+            ),
+            "oral_selected": False,
             "paths": {
                 "png": str(png_path),
             },
@@ -397,6 +421,8 @@ def main() -> None:
                 "iou_union": float(iou),
                 "num_frames": int(len(gen.frames)),
                 "num_issues": int(len(issues)),
+                "case_type": str(case_json.get("case_type", "failure")),
+                "oral_selected": False,
             }
         )
 
