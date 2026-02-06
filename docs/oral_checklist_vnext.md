@@ -31,14 +31,16 @@
 - Done when（最小通过条件）
   - 明确写出：objective 列表、dominance 判定、以及每个 budget 的 Pareto frontier（含 trust metrics 与 warm P95）。
 
-### [ ] V0002: “效应大小”与 failure modes（避免只剩 p-value）
+### [x] V0002: “效应大小”与 failure modes（避免只剩 p-value）
 
 - 风险
   - reviewer 会质疑：显著但 effect size 太小，或者指标不具备可解释性；
   - 没有 failure taxonomy/案例会被认为“系统不可控/不可解释”。
 - 最小产物（低成本）
-  - `outputs/V0002-effect/effect_size_summary.json`（absolute delta、median、分位数、按 subgroup 的 breakdown）
+  - `outputs/V0002-effect/effect_size_report.json`（从 `scripts/proof_check.py` 提取 per-budget delta/CI/门槛通过情况，避免只剩 p-value）
+  - `outputs/V0002-effect/effect_size_table.md`（可直接贴到 appendix/rebuttal）
   - `docs/oral_script.md` 增加 1 页 “Failure modes + mitigation” 的口头讲法（引用具体 case 路径）
+- 当前已生成（见上方两个文件）
 - 现成可复用证据
   - case triad（正例/拒绝/失败）：`docs/oral_checklist.md` 的 E0163 条目已给出可点开的 `case.json` 路径
   - 证明摘要：`docs/proof_audit.md`
@@ -71,13 +73,15 @@
   - 训练强 baseline：`provetok/experiments/train_ct2rep_strong.py`
   - 判定规则：`scripts/proof_check.py` + `docs/plan.md`（C0006）
 
-### [ ] V0005: Public reproducibility（GitHub 交付）
+### [x] V0005: Public reproducibility（GitHub 交付）
 
 - 风险
   - 顶会 oral 常被追问 “能不能一键复现/能不能审计”；repo 不 clean 会直接加大信任成本。
 - 最小产物
   - `README.md` 的 “reproduce oral P0” 一键路径（含 `.rd_queue`、`proof_check`、`oral_audit`）
   - 清理无关文件（例如 `node_modules/` 不应入库），并通过 SSH push 到 GitHub
+- 当前状态
+  - 已 push 到 `origin/main`（commit: `7df59bf`）。
 - 相关路径
   - 可复现入口：`README.md`、`docs/experiment.md`、`scripts/rd_queue.py`
   - 审计入口：`scripts/oral_audit.py`
