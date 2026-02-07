@@ -26,6 +26,7 @@ ProveTok: **Proof-Carrying Budgeted Evidence Tokenization for Grounded 3D Report
   - Notes:
     - B = B_enc + B_gen；verifier/ROI selector 成本必须入账（见 `outputs/compute_costs.json`）。
     - `python scripts/proof_check.py` 对 C0001 的输出是最终裁判（paper-grade 规则）。
+    - 2026-02-06（real profile 最新状态）：`outputs/E0164-full/baselines_curve_multiseed.json` 对应判定为 proved（`combined_pass=6/6`, `iou_pass=6/6`, `latency_p95_pass=6/6`, `unsupported_pass=6/6`）。
 
 - [x] C0002: `scaling law + allocation model` 能预测预算下最优配置并报告 **regret**（含 CI，并显著优于 naive policy）。
   - Evidence: E0142 (paper-grade dev curve), E0138 (paper-grade test curve), E0141 (paper-grade regret + CI)
@@ -155,7 +156,7 @@ ProveTok: **Proof-Carrying Budgeted Evidence Tokenization for Grounded 3D Report
 - [x] P0015: Baselines 论文级补齐（2.5D / ROI-crop 成本入账 / CT2Rep baseline 占位接口 + latency 报表）
   - Linked claims: C0006
   - Definition of done:
-    - baselines 列表覆盖 2D / 2.5D / ROI / fixed-grid，并包含 `ct2rep_like`（无 citations/无 refusal 的可运行占位接口，用于后续替换真实 CT2Rep）；
+    - baselines 列表覆盖 2D / 2.5D / ROI / fixed-grid，并包含 `ct2rep_noproof`（真实模型推理但禁用 citation/refusal 的无 proof-carrying 对照）；
     - ROI selector/detector 的额外成本入账可复现（FLOPs-matched）；
     - baseline 侧提供同协议的 latency 报表（cold/warm mean+P95），并落盘到可审计 artifact（E0137）。
   - Verification: `python -m provetok.experiments.run_baselines --smoke && python -m provetok.experiments.latency_bench_baselines --smoke --device cpu --budget-tokens 64 --output-dir ./outputs/_verify_latency_bench`
@@ -289,6 +290,12 @@ ProveTok: **Proof-Carrying Budgeted Evidence Tokenization for Grounded 3D Report
 - 2026-02-03: 通过 `.rd_queue` 跑通 E0111/E0112 full，并同步勾选 `docs/experiment.md` 与摘要写入 `docs/results.md`（见 `outputs/E0111-full/baselines_curve_multiseed.json`、`outputs/E0112-full/fig2_multiseed.json`）。
 - 2026-02-03: 重新跑通 E0113 full 并明确 C0003 的最小 proof rule（`cite_swap`→unsupported、`no_cite`→grounding，Holm），`python scripts/proof_check.py` 现在判定 C0003 可证明；`omega_perm` 作为更强可选检查保留在后续工作中。
 - 2026-02-04: 同步标记 P0016/P0017 已完成（对应 verification 命令均可通过），并补齐 E0117/E0118 的 `.rd_queue` 记录与 `docs/results.md` 摘要。
+- 2026-02-06: real profile 的 C0001 已关闭（`outputs/E0164-full/baselines_curve_multiseed.json`：`combined/iou/latency_p95/unsupported` 全部 `6/6`），`python scripts/oral_audit.py --sync --strict` 返回 `ready_for_oral_gate=true`。
+- 2026-02-06: 推进 V0003(C)（跨数据集弱标签 grounding）：新增 `scripts/data/build_ct_rate_pseudomask_manifest.py`，产出 `/data/provetok_datasets/ct_rate_100g_pseudomask/manifest.jsonl`（CT-RATE test=30，含 `mask_path`）；完成 smoke + preflight 证据：`outputs/E0165-ct_rate-pseudomask-smoke/figX_grounding_proof.json`、`outputs/E0165-ct_rate-pseudomask-preflight/figX_grounding_proof.json`、`outputs/E0165-ct_rate-pseudomask-counterfactual-preflight/`。
+- 2026-02-07: 完成 E0165 full（V0003(C) CT-RATE weak-label grounding，58 test 全量 + seeds=0/1/2，bootstrap=20000）；结果文件为 `outputs/E0165-ct_rate-pseudomask-full/figX_grounding_proof.json`：`iou_union` 对 `roi_variance` 在 `6/6` budgets Holm 显著，对 `fixed_grid` 在 `5/6` budgets Holm 显著（`3e6` 预算 `p_holm=0.5212`，但 `mean_diff` 仍为正）。
+- 2026-02-07: 完成 E0165CF full（V0003(C) CT-RATE weak-label counterfactual，58 test 全量，bootstrap=20000，seed=0）；结果文件为 `outputs/E0165-ct_rate-pseudomask-counterfactual-full/figX_counterfactual_20260207_044425/figX_counterfactual.json`：`grounding_iou_union_orig_minus_cf` 中 `omega_perm` 显著（`mean_diff=+0.005398`, `p_holm=0.0308`），`no_cite` 显著（`mean_diff=+0.009464`, `p_holm=0.0`）。
+- 2026-02-07: 完成 E0165CF1/E0165CF2 full（seed=1/2）并验证多 seed 稳定性：`grounding_iou_union_orig_minus_cf` 的 `omega_perm` 在 seed `{0,1,2}` 均显著（Holm 后 `p={0.0308,0.0048,0.0024}`），`no_cite` 在 seed `{0,1,2}` 均显著（Holm 后 `p=0.0`）。
+- 2026-02-07: 复跑 `python scripts/oral_audit.py --sync --out outputs/oral_audit.json --strict`，返回 `ready_for_oral_gate=true` 且 `gaps=[]`（审计时间：`2026-02-07T05:27:15+00:00`）。
 
 ## Appendix A — Paper Outline (verbatim)
 
