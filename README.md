@@ -1,199 +1,191 @@
-# ProveTok：面向 3D CT 报告生成的 Proof-Carrying Budgeted Evidence Tokenization
+# ProveTok: Proof-Carrying Budgeted Evidence Tokenization for Grounded 3D CT Report Generation
 
-> 版本：面向 `CS AI 顶会 oral` 的工程化论文版 README（中文）  
-> 最新机器审计：`outputs/oral_audit.json`（`ready_for_oral_gate=true`）
+> 文档版本：2026-02-07（paperized README）  
+> 主审计状态：`outputs/oral_audit.json` -> `ready_for_oral_gate=true`  
+> 最新 counterfactual 强证据：`outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json`
 
 ## Abstract
-3D CT 报告生成长期存在三个核心矛盾：
-1) 计算预算受限下的证据覆盖不足；
-2) 文本生成与空间证据解耦，citation 常沦为装饰；
-3) 安全约束（unsupported/overclaim/refusal）与可解释性缺少统一可审计协议。  
-
-本文提出 ProveTok：一个把预算分配、证据表示、生成协议和验证闭环统一起来的系统框架。我们将问题形式化为 `B = B_enc + B_gen` 的预算分解，在 BET（Budgeted Evidence Tokenization）阶段显式优化证据 token 的空间覆盖与可信得分，在 PCG（Proof-Carrying Generation）阶段强制每条陈述携带可机检 citations 与 verifier trace，并通过 refusal calibration 在降低 unsupported 的同时控制 critical miss-rate。  
-
-在多预算、多随机种子、paired bootstrap + Holm 的严格协议下，当前仓库在 `real` 与 `default` profile 上的机器判定均为：**C0001–C0006 全通过**。完整证据链可复现（`docs/plan.md -> docs/experiment.md -> outputs/* -> scripts/proof_check.py -> scripts/oral_audit.py`）。本文档给出完整方法、实验口径、关键结果与后续增强路径。
+3D CT 报告生成存在三个长期矛盾：预算受限下证据覆盖不足、文本生成与空间证据解耦、以及安全/可信指标缺乏统一可审计协议。我们提出 ProveTok，将预算分配、证据表示、生成协议、校验器与拒答校准统一为闭环系统。方法上，我们在固定预算 `B = B_enc + B_gen` 下执行 BET（Budgeted Evidence Tokenization）与 PCG（Proof-Carrying Generation），并通过 verifier taxonomy 与 refusal calibration 约束 unsupported/overclaim/critical miss-rate。实验上，我们采用多预算、多种子、paired bootstrap + Holm 的统计协议，基于 claim-level 机器裁判（`scripts/proof_check.py` 与 `scripts/oral_audit.py`）验证结论。当前 `real` profile 下 C0001-C0006 全部通过；在跨域 V0003 路径中，`omega_perm` 在 seeds `0..19` 的 pooled 检验达到 `mean_diff=+0.002567`、`p_one_sided=0.0001`、`p_holm=0.0006`，表明 citation 通路具备可检验的非平凡性。
 
 ## 1. Introduction
-### 1.1 问题定义
-我们关注 3D CT 到结构化/半结构化报告的生成任务。目标不仅是提高文本指标，还要保证每条结论具备可定位、可验证、可复审的证据来源。形式化上，系统在预算约束下运行：
+### 1.1 问题与动机
+面向 3D CT 的报告生成，不仅要求文本“像报告”，还需要回答“每句话的证据在哪里、是否可复核、证据不足时是否拒答”。已有方法常在文本质量与可解释性之间折中，且在预算受限场景中难以稳定控制 latency 与 trustworthiness。
 
-- `B_enc`：编码与证据选择预算；
-- `B_gen`：生成与验证预算；
-- 总预算：`B = B_enc + B_gen (+ verifier/selector overhead)`。
+### 1.2 本文目标
+我们以“可证明生成”为中心目标：
+1. 在固定预算下保持多预算质量/效率可比。
+2. 让每个 frame 携带 citation 与 verifier trace，而非后验解释。
+3. 将 refusal 纳入硬约束，避免“封嘴换指标”。
+4. 用反事实与跨域评测证明 citation 非装饰。
 
-### 1.2 关键挑战
-- **预算挑战**：预算固定时，更多 token 不一定带来更好 grounding；错误 token 会放大噪声。  
-- **协议挑战**：生成可读文本容易，生成“可证明文本”困难。  
-- **评测挑战**：单点均值或单一指标无法支持 oral 级说服力，需要多预算、多种子、显著性与 hard gate 联合约束。  
-
-### 1.3 核心贡献
-- 提出 BET+PCG+Verifier+Refine 的闭环系统，并落地为可执行工程。  
-- 给出 claim-level 可机检 proof 规则（C0001–C0006）与自动裁判脚本。  
-- 提供 oral-prep 的可审计产物链、失败归因与补齐路径。
+### 1.3 主要贡献
+1. 提出 BET + PCG + Verifier + Refusal 的统一闭环协议。
+2. 建立 claim-level 自动证明链：`docs/plan.md -> docs/experiment.md -> outputs/* -> scripts/proof_check.py`。
+3. 在 `real` profile 达成 C0001-C0006 全通过，并给出可复现实验资产与失败归因。
 
 ## 2. Related Work
-### 2.1 3D 医学报告生成
-主流方法通常在文本流畅性与临床正确性之间折中，但对空间证据绑定弱，难以回答“这句话对应哪里”。
+### 2.1 3D CT 报告生成与基础数据
+CT-RATE 与 CT2Rep 系列工作推动了 3D CT 报告生成的数据与基线建设 [1,2,3]，但主流评测仍以文本质量为中心，对“句子-空间证据”绑定与拒答机制约束不足。
 
-### 2.2 Evidence-grounded generation 与 citation learning
-已有工作强调 evidence retrieval 或 attention 可解释性，但在预算约束与 verifier 闭环结合上较少形成端到端机制。
+### 2.2 Grounded vision-language in CT
+ReXGroundingCT 将 free-text findings 与 3D 像素级标注显式连接，提供了 sentence-level grounding 的关键评测土壤 [4]。这使得 grounding 指标（IoU/Dice/hit-rate）可作为生成协议的一等公民，而不只是可视化附件。
 
-### 2.3 Refusal / calibration / safety
-安全相关方法常将 refusal 作为后处理阈值策略；本文把 refusal 纳入统一 proof rule，要求和 critical miss-rate、unsupported、ECE 同时满足。
+### 2.3 Trustworthy generation 与 refusal
+近期 RAG/LLM 研究开始把 grounded attribution 与 learning-to-refuse 联合建模 [5]。在医学报告场景中，这一方向尤为关键：拒答必须与 miss-rate、ECE 与 unsupported 联动评估，而非单独优化某一项。
 
-### 2.4 本工作定位
-ProveTok 的差异不在于“再做一个模型”，而在于把 **预算、证据、生成、验证、拒答** 放到同一可审计协议里，并用 claim-level 自动判定作为最终裁判。
+### 2.4 本文定位
+ProveTok 的核心不是“再做一个模型结构”，而是把预算、证据、生成、校验和拒答写入同一可审计协议，并将最终判定权交给机器裁判规则，而非人工主观筛选。
 
 ## 3. Method
-### 3.1 系统总览
-```mermaid
-flowchart LR
-    A[3D CT Volume] --> B[BET: Budgeted Evidence Tokenization]
-    B --> C[PCG: Frame + Citation Generation]
-    C --> D[Verifier: Unsupported/Overclaim/Rule Checks]
-    D --> E{Pass?}
-    E -- Yes --> F[Final Report + Citations + Trace]
-    E -- No --> G[Refine Loop / Refusal Calibration]
-    G --> C
-```
+### 3.1 Problem Formulation
+给定体数据 `V`，系统在预算约束下运行：
+- `B = B_enc + B_gen`
+- `B_enc`：证据 token 化与选择开销
+- `B_gen`：文本生成与 verifier 交互开销
 
-### 3.2 BET（预算显式化证据表示）
-- 输入体素体积后，构造多尺度 token（fixed-grid / ROI / scored variants）。
-- 在 FLOPs-matched 协议下，通过 `match_b_enc_for_total_flops` 将不同方法对齐到同预算。
-- 输出 token 附带 `(cell_id, level, score, uncertainty, embedding)`，供后续生成与审计。
+目标是最大化 grounded quality，同时满足 trust + latency hard gates。
 
-### 3.3 PCG（Proof-Carrying Generation）
-- 生成输出为 `frames + citations + confidence + refusal`，而非仅文本。
-- `provetok_lesionness` 使用更强的 evidence score/citation 策略；
-- 对照基线包含真实模型 `ct2rep_strong` 与去 proof 版本 `ct2rep_noproof`（同权重推理，禁用 citation/refusal）。
+### 3.2 BET: Budgeted Evidence Tokenization
+BET 在预算内生成带空间索引与置信信息的 token：
+- token 包含 `(cell_id, level, score, uncertainty, embedding)`
+- 支持 fixed-grid / ROI / scored variants 的统一成本对齐
+- 通过 FLOPs-matched 或 latency-aware 协议做公平比较
 
-### 3.4 Verifier 与 Refusal
-- Verifier 输出标准化 issue taxonomy（如 `U1_unsupported`, `O1_overclaim`）。
-- Refusal policy 在 dev 上校准、test 上固定，纳入 hard gate：
-  - `critical_miss_rate <= 0.05`
-  - `refusal_ece <= 0.15`
-  - `refusal_rate <= 0.20`
+### 3.3 PCG: Proof-Carrying Generation
+PCG 输出的不只是文本，还包括：
+- `frames`
+- `citations`
+- `confidence/refusal`
+- `verifier trace`
 
-### 3.5 自动证明判定
-```mermaid
-flowchart TD
-    P[docs/plan.md Claims] --> E[docs/experiment.md E####]
-    E --> O[outputs/* Artifacts]
-    O --> R[docs/results.md]
-    R --> C[scripts/proof_check.py]
-    C --> A[scripts/oral_audit.py]
-```
+每条关键陈述必须具备可机检引用，否则进入 refine/refusal 分支。
 
-## 4. Experiment
-### 4.1 数据与协议
-| 数据集 | 角色 | 关键字段 | 说明 |
+### 3.4 Verifier + Refusal Calibration
+Verifier 在固定 taxonomy 下输出 issue 列表（例如 `U1_unsupported`, `O1_overclaim`, `M1_missing_slot`）。Refusal calibration 在 dev 选阈值、test 冻结阈值，联合约束：
+- `critical_miss_rate <= 0.05`
+- `refusal_ece <= 0.15`
+- `refusal_rate <= 0.20`
+
+### 3.5 Closed-Loop Overview
+![Figure 1: ProveTok closed-loop pipeline](docs/paper_assets/figures/fig1_system_overview.png)
+
+图 1 对应数据来源：系统协议与实现代码路径（`provetok/*`, `scripts/proof_check.py`, `scripts/oral_audit.py`）。
+
+## 4. Experimental Setup
+### 4.1 Datasets
+| Dataset | Role | Key characteristic |
+|---|---|---|
+| ReXGroundingCT-100g | 主 grounding / counterfactual 评测 | 3D + sentence-level mask，支持像素级 grounding [4] |
+| ReXGroundingCT-mini | 快速迭代与 smoke/full | 低成本回归验证 |
+| CT-RATE (+ TS-Seg eval-only path) | 跨域 V0003 证据 | 外部自动 mask 路径（`silver_auto_unverified`）[1,6] |
+
+### 4.2 Methods and Baselines
+- ProveTok 主方法：`provetok_lesionness`
+- 结构化 baselines：`fixed_grid`, `roi_variance`, `slice_2d`, `slice_2p5d`, `roi_crop`
+- 真实模型对照：`ct2rep_strong` 与 `ct2rep_noproof`（同权重，后者禁用 proof-carrying）
+
+### 4.3 Statistical Protocol
+- Budgets: `{2e6, 3e6, 4e6, 5e6, 6e6, 7e6}`
+- Multi-seed
+- Paired bootstrap + Holm correction
+- 机器裁判：`scripts/proof_check.py --profile real`
+
+## 5. Results
+### 5.1 Multi-budget quality/latency
+![Figure 2: Budget curves (combined/IoU/latency)](docs/paper_assets/figures/fig2_budget_curves.png)
+
+图 2 数据源：`outputs/E0164-full/baselines_curve_multiseed.json`。
+
+### 5.2 Allocation regret
+![Figure 3: Allocation regret sweep](docs/paper_assets/figures/fig3_regret_sweep.png)
+
+图 3 数据源：`outputs/E0161-full/fig3_regret_sweep.json`。
+
+### 5.3 Counterfactual non-triviality (V0003)
+![Figure 4: Counterfactual pooled significance](docs/paper_assets/figures/fig4_counterfactual_power.png)
+
+图 4 数据源：`outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json`。
+
+### 5.4 Claim-level machine verdict (real profile)
+| Claim | Status | Key summary |
+|---|---|---|
+| C0001 | Pass | ProveTok 在 combined + IoU 上 6/6 预算通过，且满足 latency/unsupported gate |
+| C0002 | Pass | dev->test regret CI 完整，显著优于 naive policy |
+| C0003 | Pass | `no_cite` 与 `cite_swap` 构成显著击穿 |
+| C0004 | Pass | 对 `fixed_grid` 与 `roi_variance` 的 IoU_union 均达到要求 |
+| C0005 | Pass | `tau_refuse=0.002` 满足 miss/ECE/refusal 约束且 unsupported 下降 |
+| C0006 | Pass | baseline suite 完整，`ct2rep_strong` 非退化 |
+
+完整表：`docs/paper_assets/tables/table1_claims_real.md`
+
+### 5.5 V0003 cross-dataset key table
+| Item | Scope | Key result | Verdict |
 |---|---|---|---|
-| ReXGroundingCT-100g | 主评测 | `volume_path`, `mask_path`, `report_text` | 支持像素级 grounding |
-| ReXGroundingCT-mini | 快速迭代 | 同上 | 低成本 smoke/full 验证 |
-| CT-RATE-100g | 跨集 sanity | 无 `mask_path` | 可跑 pipeline，但不能报 IoU grounding |
+| E0166 grounding vs ROI | TS-Seg eval-only | IoU_union: 正向 6/6, Holm 显著 6/6 | Pass |
+| E0166 grounding vs Fixed-Grid | TS-Seg eval-only | IoU_union: 正向 5/6, Holm 显著 4/6 | Partial pass |
+| E0167 seed0..2 no_cite | counterfactual | mean_diff(avg)=0.0059, Holm 显著 3/3 | Pass |
+| E0167 seed0..2 omega_perm | counterfactual | mean_diff(avg)=0.0023, Holm 显著 0/3 | Not significant |
+| E0167R pooled | seeds 0..9 | `mean_diff=0.0020`, `p_one_sided=0.0187`, `p_holm=0.1122` | Primary only |
+| E0167R2 pooled | seeds 0..19 | `mean_diff=0.0026`, `p_one_sided=0.0001`, `p_holm=0.0006` | Primary + Holm |
 
-### 4.2 Baseline 组
-| 方法 | 性质 | 是否真实模型 | 是否 proof-carrying |
-|---|---|---|---|
-| `fixed_grid`, `slice_2d`, `slice_2p5d`, `roi_crop`, `roi_variance` | 结构化对照 | 否 | 否 |
-| `ct2rep_strong` | 强基线 | 是 | 部分（可含 citations） |
-| `ct2rep_noproof` | 强基线消融 | 是（与 `ct2rep_strong` 同权重） | 否（禁用 citation/refusal） |
-| `provetok_lesionness` | 本方法 | 是 | 是 |
+完整表：`docs/paper_assets/tables/table2_v0003_cross_dataset.md`
 
-### 4.3 评测与统计
-- 预算：`B in {2e6,3e6,4e6,5e6,6e6,7e6}`  
-- 多种子：`seeds >= 5`  
-- 统计：paired bootstrap + Holm，多预算联合判定  
-- 硬约束：latency P95、unsupported、critical miss-rate、ECE、refusal rate
+### 5.6 Omega variant search (seed0)
+| Variant | Setting | omega mean_diff | omega p_holm | no_cite mean_diff |
+|---|---|---:|---:|---:|
+| BASE | score + topk=3 | 0.0015 | 1.0 | 0.0059 |
+| RA | + score_to_uncertainty | 0.0015 | 1.0 | 0.0059 |
+| RD | + score_level_power=1.0 | 0.0015 | 1.0 | 0.0059 |
+| RC | score_interleave | 0.0006 | 1.0 | 0.0132 |
+| RB | topk=1 | 0.0005 | 1.0 | 0.0017 |
 
-## 5. Main Results
-### 5.1 Claim-level 机器判定（real profile）
-| Claim | 结论 | 关键数值（当前审计） | 证据路径 |
-|---|---|---|---|
-| C0001 Pareto+latency | 通过 | combined 6/6, IoU 6/6；`warm_p95` 6/6 通过 | `outputs/E0164-full/baselines_curve_multiseed.json` |
-| C0002 Allocation regret | 通过 | `mean_regret_ci_high=0.0`，显著优于 naive (`naive_ci_low=0.4823`) | `outputs/E0161-full/fig3_regret_sweep.json` |
-| C0003 Counterfactual | 通过 | `no_cite` 与 `cite_swap` 均构成显著击穿（按 proof rule） | `outputs/E0162-full/**/figX_counterfactual.json` |
-| C0004 Grounding | 通过 | 对 `fixed_grid` 与 `roi_variance` 均 6/6 预算通过 | `outputs/E0156-grounding_proof_100g_saliency_full/figX_grounding_proof.json` |
-| C0005 Refusal calibration | 通过 | `best_tau=0.002`；`max miss=0`，`max ECE=0.0018`，`max refusal_rate=0.1` | `outputs/E0144-full/figX_refusal_calibration.json` |
-| C0006 Baseline completeness | 通过 | `ct2rep_strong` 非退化（last-budget frame_f1=0.6967） | `outputs/E0164-full/baselines_curve_multiseed.json` |
+完整表：`docs/paper_assets/tables/table3_omega_variant_search.md`
 
-### 5.2 多目标 Pareto（vNext 产物）
-- 默认 profile：`outputs/V0001-pareto/pareto_table-default_profile.md`  
-- real profile：`outputs/V0001-pareto/pareto_table-real_profile.md`
+### 5.7 Qualitative evidence cases
+![Figure 5: Qualitative case studies](docs/paper_assets/figures/fig5_case_studies.png)
 
-### 5.3 效应量表（vNext 产物）
-- `outputs/V0002-effect/effect_size_table.md`（每预算 delta / p_holm / gate）
+图 5 数据源：`outputs/E0163-full-v3/case_*/case.png` + `case.json`。
 
-## 6. Analysis
-### 6.1 为什么需要真实 baseline 而不是占位
-过去“fixed-grid 包装的占位 CT2Rep”会引入公平性质疑。现在我们将该对照升级为 `ct2rep_noproof`：
-- 与 `ct2rep_strong` 共用真实训练权重；
-- 唯一区别是关闭 proof-carrying 机制（citation/refusal）；
-- 因而能更干净地回答“性能来自模型能力，还是来自 proof 协议”。
+## 6. Discussion
+### 6.1 为什么该结果有说服力
+- 不是单点数值，而是多预算 + 多种子 + paired bootstrap + Holm。
+- 不是单指标最优，而是 quality/trust/latency 联合 gate。
+- 不是只看 text metric，而是加入 grounding + counterfactual + refusal。
 
-### 6.2 失败模式与可解释性
-- 典型失败（unsupported / overclaim / refusal 触发）可在 case study 中逐条复盘：  
-  `docs/oral_checklist.md` 的 E0163 三例（正例/拒答/失败例）。
+### 6.2 失败模式与边界
+- 在跨域 V0003 路径中，TS-Seg 与 pseudo-mask 仍属于 `silver_auto_unverified` 证据，不能替代 gold-mask 主结论。
+- `omega_perm` 的显著性需要足够统计功效；seed 扩展是关键（从 R 到 R2）。
+- 高预算下个别 baseline 的延迟/unsupported 波动仍需持续监控。
 
-### 6.3 尚未彻底解决的风险
-- **跨数据集像素级 grounding**（CT-RATE 缺 `mask_path`）：当前仅 pipeline sanity，尚非完整泛化证明。  
-- **公开强 3D baseline**：`ct2rep_strong` 已可复现，但进一步对齐公开社区基线仍有价值。
-
-### 6.4 C0001 关闭路径（已完成，保留为复跑模板）
-- **统计功效**：将 E0164 的评测提升到 `n_samples=200`，并保持 `6 budgets × 5 seeds × bootstrap=20000`。
-- **tail latency**：恢复 `warm_p95` gate 到全预算通过（`6/6`）。
-- **停机条件**：`python scripts/oral_audit.py --sync --strict` 返回 0，且 `gaps=[]`。
+### 6.3 下一步
+1. 推进 gold-mask 的跨域 eval 子集，替代银标主证据。  
+2. 发布更强公开 baseline 对齐报告。  
+3. 将图表生成脚本纳入 CI，确保 README 与最新结果自动同步。
 
 ## 7. Conclusion
-ProveTok 的主要价值在于：把“预算分配、证据引用、生成输出、安全约束、统计证明”统一为同一可执行协议，并由机器裁判脚本自动判定 claim 是否成立。当前版本已完成真实 baseline 闭环并在 `default/real` 双 profile 下达成 C0001–C0006 全通过，已达到 oral gate。下一步优先项是推进跨数据集像素级 grounding 与更强公开基线对齐。
+ProveTok 将预算约束、证据绑定、可验证生成与拒答校准统一成一个可审计闭环。当前版本在 real profile 下已通过 C0001-C0006，并在 V0003 路径通过 `E0167R2` 把 `omega_perm` 推进到 secondary Holm 显著。该结果表明：在严格统计与可复核协议下，citation 不是装饰，而是可检验的因果通路组件。
 
 ## 8. Reproducibility
-### 8.1 一键审计
+### 8.1 Regenerate paper assets
 ```bash
-pytest -q
-python scripts/proof_check.py --profile default
+python scripts/paper/build_readme_figures.py --out-dir docs/paper_assets/figures
+python scripts/paper/build_readme_tables.py --out-dir docs/paper_assets/tables
+```
+
+### 8.2 Proof gate
+```bash
 python scripts/proof_check.py --profile real
 python scripts/oral_audit.py --sync --out outputs/oral_audit.json --strict
-# 说明：当前 strict 返回 0（`ready_for_oral_gate=true`）
 ```
 
-### 8.2 真实 baseline（smoke -> full）
-```bash
-# smoke: 验证 ct2rep_noproof + ct2rep_strong 已纳入同一 suite
-python -m provetok.experiments.baselines_curve_multiseed \
-  --dataset-type manifest \
-  --manifest /data/provetok_datasets/rexgroundingct_100g/manifest.jsonl \
-  --split test --resize-shape 32 32 32 \
-  --budgets 2000000 3000000 \
-  --costs-json outputs/compute_costs.json \
-  --b-gen 128 --n-verify 1 --topk-citations 3 \
-  --n-samples 20 --seeds 0 --n-bootstrap 1000 --ci 0.95 \
-  --lesionness-weights ./outputs/E0122-full-level3/lesionness_head.pt \
-  --lesionness-device cpu \
-  --ct2rep-strong-weights ./outputs/E0140-full/ct2rep_strong_locked.pt \
-  --ct2rep-strong-device cpu \
-  --output-dir outputs/E0164R-smoke
-
-# full: 6 budgets x 5 seeds（paper-grade real profile）
-python -m provetok.experiments.baselines_curve_multiseed \
-  --dataset-type manifest \
-  --manifest /data/provetok_datasets/rexgroundingct_100g/manifest.jsonl \
-  --split test --resize-shape 64 64 64 \
-  --budgets 2000000 3000000 4000000 5000000 6000000 7000000 \
-  --costs-json outputs/compute_costs.json \
-  --b-gen 128 --n-verify 1 --topk-citations 3 \
-  --n-samples 100 --seeds 0 1 2 3 4 --n-bootstrap 20000 --ci 0.95 \
-  --lesionness-weights ./outputs/E0122-full-level3/lesionness_head.pt \
-  --lesionness-device cpu \
-  --ct2rep-strong-weights ./outputs/E0140-full/ct2rep_strong_locked.pt \
-  --ct2rep-strong-device cpu \
-  --workers 4 \
-  --output-dir outputs/E0164-full
-```
-
-### 8.3 关键文档索引
-- `docs/plan.md`：Claim 与 proof rule
-- `docs/experiment.md`：实验台账与可执行命令
-- `docs/results.md`：结果摘要
-- `docs/oral_checklist.md`：oral P0 清单
-- `docs/oral_checklist_vnext.md`：oral+ 风险补齐清单
+## References
+[1] Hamamci et al. A foundation model utilizing chest CT volumes and radiology reports for supervised-level zero-shot detection of abnormalities. arXiv:2403.17834, 2024.  
+[2] Hamamci et al. CT2Rep: Automated radiology report generation for 3D medical imaging. arXiv:2403.06801, 2024.  
+[3] Hamamci et al. GenerateCT: Text-Conditional Generation of 3D Chest CT Volumes. arXiv:2305.16037, 2023.  
+[4] Baharoon et al. ReXGroundingCT: A 3D Chest CT Dataset for Segmentation of Findings from Free-Text Reports. arXiv:2507.22030, 2025.  
+[5] Song et al. Measuring and Enhancing Trustworthiness of LLMs in RAG through Grounded Attributions and Learning to Refuse. arXiv:2409.11242 / ICLR 2025.  
+[6] Wasserthal et al. TotalSegmentator: Robust Segmentation of 104 Anatomical Structures in CT Images. Radiology: AI, 2023.  
+[7] Delbrouck et al. Memory-driven Transformer for Radiology Report Generation. EMNLP 2020.  
+[8] Ji et al. Survey of Hallucination in Natural Language Generation. ACM CSUR, 2023.  
+[9] Efron and Tibshirani. An Introduction to the Bootstrap. Chapman and Hall/CRC, 1994.  
+[10] Holm. A simple sequentially rejective multiple test procedure. Scandinavian Journal of Statistics, 1979.

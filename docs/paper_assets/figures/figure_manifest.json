@@ -1,0 +1,17 @@
+{
+  "generated_at_utc": "2026-02-07T11:31:04.658319+00:00",
+  "out_dir": "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/figures",
+  "sources": {
+    "baselines_json": "/home/ubuntu/tiasha/ProveTok/outputs/E0164-full/baselines_curve_multiseed.json",
+    "regret_json": "/home/ubuntu/tiasha/ProveTok/outputs/E0161-full/fig3_regret_sweep.json",
+    "omega_json": "/home/ubuntu/tiasha/ProveTok/outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json",
+    "case_root": "/home/ubuntu/tiasha/ProveTok/outputs/E0163-full-v3"
+  },
+  "figures": [
+    "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/figures/fig1_system_overview.png",
+    "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/figures/fig2_budget_curves.png",
+    "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/figures/fig3_regret_sweep.png",
+    "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/figures/fig4_counterfactual_power.png",
+    "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/figures/fig5_case_studies.png"
+  ]
+}
