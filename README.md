@@ -11,6 +11,8 @@
 - 一张表抓主证据：`docs/paper_assets/tables/table4_oral_minset.md`（下文 §5.0 也内嵌同表）。
 - 图表可复现：`python scripts/paper/build_readme_figures.py` / `python scripts/paper/build_readme_tables.py`（产物在 `docs/paper_assets/`）。
 - 机器审计门：`python scripts/proof_check.py --profile real` + `python scripts/oral_audit.py --sync --out outputs/oral_audit.json --strict`。
+- LaTeX 论文草稿（NeurIPS-style）：`paper/`（入口 `paper/main.tex`，已生成 `paper/main.pdf` 便于快速浏览；正式投稿请替换为官方 NeurIPS style files）。
+- 写作范式拆解与模板：`docs/writing_refs/`（对标论文的结构/图表套路 + 可复用段落模板）。
 
 ## 1. Introduction
 ### 1.1 问题与动机

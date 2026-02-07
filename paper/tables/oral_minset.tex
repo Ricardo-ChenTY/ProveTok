@@ -1,0 +1,20 @@
+\begin{table*}[t]
+  \caption{Oral minimal evidence set (paper-grade). Each item is audited by a fixed protocol and points to a reproducible artifact.}
+  \label{tab:oral-minset}
+  \centering
+  \small
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabularx}{\textwidth}{l l X X X}
+    \toprule
+    Item & Verdict & Key numbers & Protocol & Evidence \\
+    \midrule
+    C0001 & Pass & 6/6 budgets pass for combined and grounding; latency and unsupported constraints satisfied & 6 budgets, 5 seeds, paired bootstrap ($n_{\mathrm{boot}}{=}20{,}000$) with Holm over budgets; latency p95 $\leq$ +5\%, unsupported $\Delta\leq0.05$ & \texttt{\detokenize{outputs/E0164-full/baselines_curve_multiseed.json}} \\
+    C0002 & Pass & dev$\rightarrow$test regret CI small; beats naive policy & model fit (AIC/BIC), paired bootstrap CI; requires CI upper bound $<0.15$ and improvement over naive & \texttt{\detokenize{outputs/E0161-full/fig3_regret_sweep.json}} \\
+    C0003 & Pass & no\_cite breaks grounding; cite\_swap breaks supportedness (Holm-significant) & paired bootstrap + Holm over counterfactual family & \texttt{\detokenize{outputs/E0162-full_retry3/figX_counterfactual_20260206_102521/figX_counterfactual.json}} \\
+    C0004 & Pass & grounding IoU improves across baselines over multiple budgets (Holm-significant) & one-sided ($H_1{>}0$) + Holm over budgets; $n_{\mathrm{boot}}{=}20{,}000$ & \texttt{\detokenize{outputs/E0156-grounding_proof_100g_saliency_full/figX_grounding_proof.json}} \\
+    C0005 & Pass & $\tauRef{=}0.002$ meets miss/ECE/refusal constraints; supportedness improves across budgets & hard gates per budget; requires improvement on supportedness in $\geq 2/3$ budgets & \texttt{\detokenize{outputs/E0144-full/figX_refusal_calibration.json}} \\
+    C0006 & Pass & audited cost accounting and strong baselines are present and non-degenerate & baseline coverage + audited cost accounting + reproducible strong baseline & \texttt{\detokenize{outputs/E0164-full/baselines_curve_multiseed.json}} \\
+    V0003 ($\omega$-perm) & Pass & pooled mean diff $=0.0026$, 95\% CI $[0.0013,0.0038]$; one-sided $p=10^{-4}$; Holm $p=6\times 10^{-4}$; positive 19/20 & pooled one-sided test + secondary Holm over counterfactual family & \texttt{\detokenize{outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json}} \\
+    \bottomrule
+  \end{tabularx}
+\end{table*}

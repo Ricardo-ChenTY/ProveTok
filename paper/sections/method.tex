@@ -1,0 +1,47 @@
+\label{sec:method}
+
+\subsection{Problem Setup}
+Let $V$ be a 3D CT volume and let the model generate a report consisting of clinical statements.
+We define a unified inference budget
+\begin{equation}
+  \Btotal = \Benc + \Bgen,
+\end{equation}
+where $\Benc$ bounds the compute used for evidence tokenization/selection and $\Bgen$ bounds the compute used for proof-carrying generation and verifier interactions.
+The system output is a structured object containing (i) textual frames/statements, (ii) citations to evidence tokens, (iii) a refusal/uncertainty decision when evidence is insufficient, and (iv) a verifier trace that makes failures machine-auditable.
+Formally, BET produces evidence tokens $\{t_i\}$, where each token is associated with an explicit 3D support region $\Omega_i$ and metadata (e.g., resolution level and score).
+PCG generates frames $\{y_k\}$ and citations $C_k \subseteq \{t_i\}$, and a verifier $g(y_k, C_k)$ returns a pass/fail decision plus a failure type used for refinement or refusal.
+
+\subsection{BET: Budgeted Evidence Tokenization}
+BET constructs a set of evidence tokens $\{t_i\}$ under budget $\Benc$.
+Each token is associated with an explicit 3D support region $\Omega_i$ (e.g., a cell at a given resolution level) and a score indicating estimated evidential value.
+Conceptually, BET answers: \emph{which spatial regions are worth spending encoder compute on}?
+We support multiple tokenization families (fixed-grid, ROI-style, scored variants) while enforcing matched-cost evaluation by accounting for the realized encoder compute under $\Benc$.
+
+\subsection{PCG: Proof-Carrying Generation}
+PCG generates statements under budget $\Bgen$ with a hard contract: every statement must cite one or more evidence tokens.
+A verifier inspects the statement, its citations, and the implied evidence coverage; if the verifier flags insufficient support, the system triggers refinement (requesting additional evidence tokens or revising the statement) or outputs a calibrated refusal.
+This turns grounding from a post-hoc visualization into a protocol requirement.
+
+In practice, the PCG loop follows a simple structure:
+\begin{enumerate}
+  \item Generate a candidate frame $y_k$ and a set of citations $C_k$.
+  \item Run the verifier to obtain an auditable outcome and failure type.
+  \item If failed, either refine (revise $y_k$ or request additional evidence tokens) or refuse based on calibrated thresholds.
+\end{enumerate}
+
+\subsection{Verifier Taxonomy}
+We implement a lightweight verifier that categorizes failures into machine-checkable types (e.g., missing citation, insufficient spatial coverage, unsupported assertion) and emits a trace.
+The trace is used both for debugging and for claim-level auditing in our proof rules.
+
+\subsection{Refusal Calibration with Anti-Silencing Gates}
+Each frame $y_k$ is assigned a support probability $q_k \in [0,1]$ intended to estimate \emph{evidence-backed support} (not necessarily clinical correctness).
+We calibrate a refusal threshold $\tauRef$ on development data under explicit safety constraints, then freeze it for test evaluation.
+Crucially, refusal is not allowed to ``game'' supportedness by staying silent: we enforce hard gates on (i) \emph{critical miss-rate} (critical findings present in ground-truth but incorrectly refused), (ii) refusal calibration error (ECE/reliability), and (iii) refusal rate.
+
+We use a fixed, audited critical finding set (e.g., pneumothorax, effusion, consolidation, nodule) for anti-silencing accounting.
+For ECE/reliability, we treat ``correct'' as ``supported by the verifier'' (i.e., no unsupported issues) on asserted positive frames, matching the semantics of $q_k$.
+
+\subsection{Claim-level Proof Rules}
+Rather than relying on cherry-picked qualitative examples, we define a bounded set of claims and implement scriptable pass/fail rules.
+Each claim points to a reproducible artifact and a statistical protocol (paired bootstrap and Holm correction).
+Table~\ref{tab:oral-minset} provides the minimal decisive evidence set for oral-level defensibility.

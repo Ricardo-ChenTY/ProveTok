@@ -1,0 +1,19 @@
+\begin{table*}[t]
+  \caption{Claim-level machine verdict (real profile).}
+  \label{tab:claim-verdict-real}
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabularx}{\textwidth}{l l X X}
+    \toprule
+    Claim & Status & Summary & Primary evidence \\
+    \midrule
+    C0001 & Pass & \ProveTok improves combined quality and grounding across budgets under matched cost, while satisfying latency and supportedness constraints. & \texttt{\detokenize{outputs/E0164-full/baselines_curve_multiseed.json}} \\
+    C0002 & Pass & Dev$\rightarrow$test regret is statistically bounded and improves over a naive allocation policy in the real pipeline. & \texttt{\detokenize{outputs/E0161-full/fig3_regret_sweep.json}} \\
+    C0003 & Pass & Counterfactual tests show that removing citations breaks grounding and swapping citations breaks supportedness. & \texttt{\detokenize{outputs/E0162-full_retry3/figX_counterfactual_20260206_102521/figX_counterfactual.json}} \\
+    C0004 & Pass & Citation-grounding improves over fixed-grid and ROI-style baselines with Holm-significant gains across multiple budgets. & \texttt{\detokenize{outputs/E0156-grounding_proof_100g_saliency_full/figX_grounding_proof.json}} \\
+    C0005 & Pass & $\tauRef{=}0.002$ meets miss/ECE/refusal constraints and reduces unsupported rates across budgets. & \texttt{\detokenize{outputs/E0144-full/figX_refusal_calibration.json}} \\
+    C0006 & Pass & Baseline suite and cost accounting are present, with reproducible strong baselines. & \texttt{\detokenize{outputs/E0164-full/baselines_curve_multiseed.json}} \\
+    \bottomrule
+  \end{tabularx}
+\end{table*}

@@ -1,0 +1,17 @@
+\begin{table*}[t]
+  \caption{Datasets and evaluation profiles. We use gold-mask profiles for primary claims and silver-label profiles only for cross-dataset stress tests.}
+  \label{tab:datasets}
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabularx}{\textwidth}{l l l X}
+    \toprule
+    Profile & Dataset & Mask type & Role / Notes \\
+    \midrule
+    Real (gold) & ReXGroundingCT-100g~\citep{baharoon2025rexgroundingct} & finding-level 3D masks & Primary grounding and counterfactual evaluation; used for main claims. \\
+    Real (gold) & ReXGroundingCT-mini~\citep{baharoon2025rexgroundingct} & finding-level 3D masks & Fast iteration and regression (smoke/full). \\
+    Silver (auto) & CT-RATE (TS-Seg eval-only)~\citep{hamamci2024developing,wasserthal2023totalsegmentator} & automatic masks & Cross-dataset sanity and stress tests; \emph{not} a replacement for gold evidence. \\
+    Silver (pseudo) & CT-RATE (pseudo-mask) & pseudo masks & Cross-dataset stress tests built from saliency-to-mask pipelines; used to probe robustness. \\
+    \bottomrule
+  \end{tabularx}
+\end{table*}

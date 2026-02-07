@@ -1,0 +1,15 @@
+All paper figures and tables are generated from repository artifacts.
+To regenerate the paper assets used in this draft, run:
+\begin{verbatim}
+python scripts/paper/build_readme_figures.py --out-dir docs/paper_assets/figures
+python scripts/paper/build_readme_tables.py --out-dir docs/paper_assets/tables
+\end{verbatim}
+
+To run the claim-level proof gate:
+\begin{verbatim}
+python scripts/proof_check.py --profile real
+python scripts/oral_audit.py --sync --out outputs/oral_audit.json --strict
+\end{verbatim}
+
+Tables in this paper include artifact paths (Appendix) to enable direct verification of protocols and statistics.
+

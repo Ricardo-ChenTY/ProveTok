@@ -1,0 +1,19 @@
+\begin{table}[t]
+  \caption{$\omega$-permutation variant search (seed 0).}
+  \label{tab:omega-variants}
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{l l r r r r}
+    \toprule
+    Variant & Setting & $\omega$ diff & $p_{\mathrm{Holm}}$ & no\_cite diff & $p_{\mathrm{Holm}}$ \\
+    \midrule
+    BASE & score + topk=3 (baseline) & 0.0015 & 1 & 0.0059 & 0 \\
+    RA & + score\_to\_uncertainty & 0.0015 & 1 & 0.0059 & 0 \\
+    RD & + score\_level\_power=1.0 & 0.0015 & 1 & 0.0059 & 0 \\
+    RC & score\_interleave citations & 0.0006 & 1 & 0.0132 & 0 \\
+    RB & baseline with topk=1 & 0.0005 & 1 & 0.0017 & 0.0145 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+

@@ -1,0 +1,67 @@
+% Minimal NeurIPS-2024-compatible style shim for this repository.
+%
+% Why this exists:
+% - We want the paper to compile out-of-the-box from this repo.
+% - The official NeurIPS style files can be swapped in later without
+%   changing the paper sources, as long as they provide `neurips_2024.sty`.
+%
+% NOTE: This is *not* the official NeurIPS style distribution. It is a
+% lightweight formatting shim that approximates the common NeurIPS layout and
+% keeps the interface stable. Replace with the official style files for actual
+% submission/camera-ready formatting.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{neurips_2024}[2026/02/07 Minimal NeurIPS 2024 compatibility style]
+
+% ---------------------------------------------------------------------------
+% Options
+% ---------------------------------------------------------------------------
+\newif\if@neuripsfinal
+\newif\if@neuripspreprint
+\newif\if@neuripsnonatbib
+\newif\if@neuripsnumbers
+
+\DeclareOption{final}{\@neuripsfinaltrue}
+\DeclareOption{preprint}{\@neuripspreprinttrue}
+\DeclareOption{nonatbib}{\@neuripsnonatbibtrue}
+\DeclareOption{numbers}{\@neuripsnumberstrue}
+\ProcessOptions\relax
+
+% ---------------------------------------------------------------------------
+% Fonts and layout (approximation)
+% ---------------------------------------------------------------------------
+% NOTE: Do not force Times/Helvetica/Courier here. Some minimal TeX installs
+% (including this environment) may miss the required font metrics (e.g., ptmr7t).
+% For submission-ready formatting, swap in the official NeurIPS style files.
+
+\RequirePackage{geometry}
+\geometry{
+  letterpaper,
+  top=1in,
+  bottom=1in,
+  left=0.75in,
+  right=0.75in
+}
+\setlength{\columnsep}{0.25in}
+
+% ---------------------------------------------------------------------------
+% Bibliography
+% ---------------------------------------------------------------------------
+\if@neuripsnonatbib
+  % Let the document decide. We provide no natbib setup.
+\else
+  \if@neuripsnumbers
+    \RequirePackage[numbers]{natbib}
+  \else
+    \RequirePackage{natbib}
+  \fi
+\fi
+
+% ---------------------------------------------------------------------------
+% Submission vs preprint toggles (best-effort)
+% ---------------------------------------------------------------------------
+\if@neuripspreprint
+  % Preprint often uses single-column. We keep the document's class setting
+  % unchanged and only reduce emphasis (no hidden IDs, etc.).
+\fi
+
+\endinput

@@ -1,0 +1,16 @@
+\paragraph{Why these results are defensible.}
+Our evidence is organized around auditable, claim-level proof rules rather than narrative examples.
+The protocol enforces matched-cost comparisons across multiple budgets and seeds, and it uses paired bootstrap testing with Holm correction to guard against cherry-picking across budgets or counterfactual families.
+Importantly, refusal is evaluated with explicit anti-silencing gates (critical miss-rate and calibration constraints), preventing apparent safety gains from over-refusal.
+
+\paragraph{Limitations.}
+Primary grounding claims rely on gold masks available in the real profile; cross-dataset stress tests use silver labels (automatic or pseudo masks) and should not be interpreted as replacing gold-mask evidence.
+Our counterfactual perturbations are designed to test the non-triviality of the citation channel; they do not fully capture clinical correctness beyond the audited metrics.
+Finally, while our claim-level suite aims to be minimal and decisive, extending it to broader clinical settings will require additional datasets and stronger public baselines.
+
+\paragraph{Future work.}
+We plan to (i) expand cross-domain evaluation with gold-mask subsets, (ii) strengthen public baseline coverage under matched latency constraints, and (iii) integrate asset regeneration and proof gates into continuous integration to keep artifacts synchronized with code.
+
+\paragraph{Two-sentence oral summary.}
+Under a fixed inference budget, \ProveTok turns grounded generation into a contract: every clinical statement must carry machine-checkable spatial evidence and a verifier trace, otherwise it is refined or refused under calibrated, anti-silencing gates.
+Across multi-budget, multi-seed evaluations with paired bootstrap and Holm correction, we obtain decisive, reproducible evidence that citations and refusal constraints measurably shape grounded 3D CT report generation (Table~\ref{tab:oral-minset}).

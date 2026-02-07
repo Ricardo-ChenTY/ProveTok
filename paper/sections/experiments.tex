@@ -1,0 +1,32 @@
+\label{sec:exp}
+
+\subsection{Datasets and Evaluation Profiles}
+We separate a gold-mask (``real'') profile used for primary claims from cross-dataset silver-label stress tests.
+Table~\ref{tab:datasets} summarizes the profiles.
+
+\input{tables/datasets_profiles}
+
+\subsection{Baselines and Matched-Budget Protocol}
+We compare tokenization strategies (e.g., fixed-grid and ROI-style variants) under a matched-cost protocol.
+All comparisons are performed across a fixed set of budgets ($2\times 10^6$ to $7\times 10^6$ in six steps) with either FLOPs-matched or latency-aware matching depending on the claim.
+We report quality and grounding together with latency and supportedness, and we enforce hard gates where appropriate (e.g., latency p95 and supportedness deltas).
+To prevent post-hoc threshold tuning, calibration thresholds (e.g., $\tauRef$) are selected once on development data and frozen for test evaluation.
+
+\subsection{Metrics}
+Our evaluation emphasizes what is auditable:
+\begin{itemize}
+  \item \textbf{Grounding.} When gold masks are available (real profile), we report sentence-level grounding metrics (e.g., IoU) that connect citations to spatial support.
+  \item \textbf{Supportedness.} We report an \emph{unsupported rate} defined as the fraction of frames flagged by the verifier as unsupported (issue U1).
+  \item \textbf{Refusal.} We report refusal rate and refusal calibration (ECE/reliability), and we enforce an anti-silencing constraint via \emph{critical miss-rate} (ground-truth critical findings that are refused).
+\end{itemize}
+
+\subsection{Statistical Protocol}
+We follow paired bootstrap testing (typically $n_{\mathrm{boot}}{=}20{,}000$) with a one-sided alternative when comparing a method against a baseline, and we apply Holm correction over the relevant family (e.g., multiple budgets or counterfactual variants) to control family-wise error.
+We report confidence intervals and explicitly track the number of random seeds used for each artifact.
+Implementation details and artifact paths are provided in Table~\ref{tab:oral-minset} and Appendix tables.
+
+Concretely, we use:
+\begin{itemize}
+  \item \textbf{Budget families.} For multi-budget claims (e.g., C0001/C0004), we treat budgets as one family and apply Holm correction over the budget sweep.
+  \item \textbf{Counterfactual families.} For counterfactual non-triviality (e.g., C0003 and V0003), we treat perturbation variants (e.g., no\_cite, cite\_swap, $\omega$-perm) as one family and apply Holm correction accordingly.
+\end{itemize}

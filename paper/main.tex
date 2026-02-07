@@ -1,0 +1,64 @@
+\documentclass[10pt,twocolumn]{article}
+
+% NeurIPS submission format (minimal local compatibility style):
+%   - submission:   \usepackage{neurips_2024}
+%   - accepted:     \usepackage[final]{neurips_2024}
+%   - preprint:     \usepackage[preprint]{neurips_2024}
+\usepackage{neurips_2024}
+
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{url}
+
+\graphicspath{{../docs/paper_assets/figures/}}
+
+\newcommand{\ProveTok}{ProveTok}
+\newcommand{\Benc}{B_{\mathrm{enc}}}
+\newcommand{\Bgen}{B_{\mathrm{gen}}}
+\newcommand{\Btotal}{B}
+\newcommand{\tauRef}{\tau_{\mathrm{refuse}}}
+
+\title{\ProveTok: Proof-Carrying Budgeted Evidence Tokenization for Grounded 3D CT Report Generation}
+\author{Anonymous Authors}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\input{sections/abstract}
+\end{abstract}
+
+\section{Introduction}
+\input{sections/introduction}
+
+\section{Related Work}
+\input{sections/related_work}
+
+\section{Method}
+\input{sections/method}
+
+\section{Experiments}
+\input{sections/experiments}
+
+\section{Results}
+\input{sections/results}
+
+\section{Discussion and Limitations}
+\input{sections/discussion_limitations}
+
+\section{Reproducibility}
+\input{sections/reproducibility}
+
+\bibliographystyle{plainnat}
+\bibliography{../docs/paper_assets/references}
+
+\appendix
+\input{sections/appendix}
+
+\end{document}

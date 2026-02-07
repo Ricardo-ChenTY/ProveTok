@@ -1,0 +1,59 @@
+\label{sec:results}
+
+\subsection{Main Evidence: Minimal Decisive Set}
+We present the minimal decisive evidence set in Table~\ref{tab:oral-minset}.
+Each row corresponds to a script-audited claim with a fixed protocol and a reproducible artifact path, enabling end-to-end verification without manual cherry-picking.
+For readability, we summarize the intent of each claim here: C0001 tests multi-budget Pareto tradeoffs under matched cost; C0002 tests whether allocation is predictable via regret; C0003 uses counterfactuals to test non-triviality of the citation channel; C0004 tests pixel-level grounding improvements where gold masks exist; C0005 tests calibrated refusal with anti-silencing gates; C0006 tests baseline coverage and audited cost accounting; V0003 probes cross-dataset stress tests with pooled $\omega$-permutation.
+
+\input{tables/oral_minset}
+
+\subsection{Multi-budget Tradeoffs}
+Figure~\ref{fig:budget} shows multi-budget curves under matched-cost evaluation, highlighting quality/grounding improvements while satisfying latency and supportedness constraints.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig2_budget_curves.png}
+  \caption{Multi-budget tradeoffs under matched-cost evaluation (data: \texttt{\detokenize{outputs/E0164-full/baselines_curve_multiseed.json}}).}
+  \label{fig:budget}
+\end{figure*}
+
+\subsection{Allocation is Non-trivial: Regret}
+Figure~\ref{fig:regret} quantifies allocation regret, supporting that budget allocation can be modeled and evaluated beyond post-hoc configuration selection.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig3_regret_sweep.png}
+  \caption{Allocation regret sweep with bootstrap confidence intervals (data: \texttt{\detokenize{outputs/E0161-full/fig3_regret_sweep.json}}).}
+  \label{fig:regret}
+\end{figure*}
+
+\subsection{Counterfactual Non-triviality (Omega Permutation)}
+We stress-test the citation channel using counterfactual perturbations.
+Figure~\ref{fig:counterfactual} summarizes pooled significance for $\omega$-permutation, supporting that perturbing evidence support degrades grounding under a statistically guarded protocol.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig4_counterfactual_power.png}
+  \caption{Pooled counterfactual power and significance for $\omega$-permutation (data: \texttt{\detokenize{outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json}}).}
+  \label{fig:counterfactual}
+\end{figure*}
+
+\subsection{Refusal Calibration (Anti-silencing)}
+Figure~\ref{fig:refusal} reports calibrated refusal with hard gates on critical miss-rate, ECE, and refusal rate, and demonstrates supportedness improvements without ``silence for safety''.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig6_refusal_calibration.png}
+  \caption{Refusal calibration with hard gates (data: \texttt{\detokenize{outputs/E0144-full/figX_refusal_calibration.json}}).}
+  \label{fig:refusal}
+\end{figure*}
+
+\subsection{Qualitative Case Studies}
+Figure~\ref{fig:cases} shows representative cases with evidence tokens, citations, and verifier outcomes.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig5_case_studies.png}
+  \caption{Qualitative case studies (data: \texttt{\detokenize{outputs/E0163-full-v3/}}).}
+  \label{fig:cases}
+\end{figure*}

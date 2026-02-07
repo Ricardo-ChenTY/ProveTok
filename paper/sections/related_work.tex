@@ -1,0 +1,18 @@
+\paragraph{3D CT report generation and multimodal CT resources.}
+Recent efforts have significantly advanced data resources and baselines for 3D CT report generation and multimodal CT foundation modeling~\citep{hamamci2024developing,hamamci2024ct2rep,hamamci2023generatect}.
+These works primarily target generation quality, scalability, and task coverage.
+In contrast, \ProveTok is a protocol and evaluation contribution: rather than introducing a new backbone, we focus on an auditable generation \emph{contract} that couples compute budgets with evidence binding, verification outcomes, and refusal behavior under matched-cost comparisons.
+
+\paragraph{Pixel-level grounding in 3D CT.}
+Grounding datasets such as ReXGroundingCT explicitly connect free-text findings to pixel-level 3D segmentations, enabling sentence-level evaluation of evidence localization~\citep{baharoon2025rexgroundingct}.
+This evaluation substrate is essential for turning ``explainability'' into a measurable contract.
+Where prior work enables evaluation, \ProveTok additionally enforces grounding at generation time: citations are required, mapped to explicit 3D support regions, and checked by a verifier as part of the output protocol.
+
+\paragraph{Trustworthy generation, attribution, and refusal.}
+In trustworthy generation and RAG, attribution quality and learning to refuse are increasingly treated as part of the objective, not a post-processing step~\citep{song2024trustalign}.
+However, refusal without explicit miss-rate and calibration constraints can reduce apparent error by over-refusing.
+\ProveTok builds on this perspective but targets a different failure mode and setting: 3D CT evidence is spatial and budgeted, and refusal must be audited jointly with grounding, latency, and supportedness under matched budgets.
+
+\paragraph{Positioning.}
+Across these lines of work, the missing piece is a unified, scriptable contract that ties \emph{budget}, \emph{evidence binding}, \emph{verification}, and \emph{refusal calibration} into one end-to-end protocol.
+\ProveTok aims to close that gap.
