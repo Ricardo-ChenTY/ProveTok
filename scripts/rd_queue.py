@@ -358,6 +358,15 @@ def _extract_key_metrics(artifact_path: Path) -> str:
                 return f"Latency fixed_grid warm_p95={float(p95):.4f}s"
         return "Latency bench"
 
+    if name == "omega_perm_power_report.json":
+        primary = d.get("primary") or {}
+        md = primary.get("mean_diff")
+        p1 = primary.get("p_value_one_sided")
+        ph = primary.get("p_value_holm_secondary")
+        if isinstance(md, (int, float)) and isinstance(p1, (int, float)) and isinstance(ph, (int, float)):
+            return f"OmegaPerm pooled ΔIoU={float(md):.4f} p1={float(p1):.4g} p_holm={float(ph):.4g}"
+        return "OmegaPerm power report"
+
     return artifact_path.name
 
 
@@ -462,6 +471,17 @@ def _extract_margin_to_threshold(artifact_path: Path) -> str:
                     return f"ct2rep_f1_margin={float(mean)-0.05:+.4f}"
         return ""
 
+    if name == "omega_perm_power_report.json":
+        primary = d.get("primary") or {}
+        p1 = primary.get("p_value_one_sided")
+        ph = primary.get("p_value_holm_secondary")
+        parts: List[str] = []
+        if isinstance(p1, (int, float)):
+            parts.append(f"primary_p1_margin={0.05-float(p1):+.4f}")
+        if isinstance(ph, (int, float)):
+            parts.append(f"secondary_p_holm_margin={0.05-float(ph):+.4f}")
+        return ",".join(parts)
+
     return ""
 
 
@@ -508,6 +528,7 @@ def _write_results_md(*, root: Path, results_dir: Path) -> Path:
 
             # Try common artifacts (ordered by preference).
             for fname in [
+                "omega_perm_power_report.json",
                 "fig2_multiseed.json",
                 "fig2_raw_data.json",
                 "fig3_results.json",
