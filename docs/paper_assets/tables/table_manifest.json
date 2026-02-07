@@ -1,15 +1,19 @@
 {
-  "generated_at_utc": "2026-02-07T11:31:03.574751+00:00",
+  "generated_at_utc": "2026-02-07T15:16:30.668555+00:00",
   "out_dir": "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/tables",
   "tables": [
     "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/tables/table1_claims_real.md",
     "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/tables/table2_v0003_cross_dataset.md",
-    "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/tables/table3_omega_variant_search.md"
+    "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/tables/table3_omega_variant_search.md",
+    "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/tables/table4_oral_minset.md"
   ],
   "sources": {
     "audit_json": "/home/ubuntu/tiasha/ProveTok/outputs/oral_audit.json",
     "e0166_json": "/home/ubuntu/tiasha/ProveTok/outputs/E0166-ct_rate-tsseg-effusion-grounding-full/figX_grounding_proof.json",
     "e0167r_json": "/home/ubuntu/tiasha/ProveTok/outputs/E0167R-ct_rate-tsseg-effusion-counterfactual-power/omega_perm_power_report.json",
-    "e0167r2_json": "/home/ubuntu/tiasha/ProveTok/outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json"
+    "e0167r2_json": "/home/ubuntu/tiasha/ProveTok/outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json",
+    "proof_check_script": "/home/ubuntu/tiasha/ProveTok/scripts/proof_check.py",
+    "proof_profile": "real",
+    "omega_json": "/home/ubuntu/tiasha/ProveTok/outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json"
   }
 }

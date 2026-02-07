@@ -4,9 +4,14 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Tuple
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _now_iso() -> str:
@@ -215,6 +220,170 @@ def build_table3_variants(baseline_root: Path, variant_roots: Dict[str, Path], o
     out_path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _run_proof_check(*, script_path: Path, profile: str) -> dict:
+    script = script_path
+    if not script.is_absolute():
+        script = (ROOT / script).resolve()
+    if not script.exists():
+        raise FileNotFoundError(f"Missing proof_check script: {script}")
+
+    out = subprocess.check_output(
+        [sys.executable, str(script), "--profile", str(profile)],
+        cwd=str(ROOT),
+        text=True,
+        stderr=subprocess.STDOUT,
+    )
+    return json.loads(out)
+
+
+def build_table4_oral_minset(
+    *,
+    proof_check_script: Path,
+    proof_profile: str,
+    omega_json: Path,
+    out_path: Path,
+) -> None:
+    proof = _run_proof_check(script_path=proof_check_script, profile=proof_profile)
+    checks = {c.get("claim_id"): c for c in (proof.get("checks") or []) if isinstance(c, dict)}
+
+    lines: List[str] = []
+    lines.append("# Table 4. Oral Minimal Evidence Set (Paper-Grade)")
+    lines.append("")
+    lines.append("| Item | Verdict | Key Numbers | Protocol | Evidence |")
+    lines.append("|---|---|---|---|---|")
+
+    def _verdict_row(item: str, claim: str) -> None:
+        c = checks.get(claim) or {}
+        proved = bool(c.get("proved", False))
+        verdict = "Pass" if proved else "Fail"
+        details = c.get("details") or {}
+        evidence = "-"
+        proto = "-"
+        key = "-"
+
+        if claim == "C0001":
+            evidence = str(details.get("baselines", "-"))
+            rows = details.get("rows") or []
+            n_budget = len(rows)
+            combined_pass = sum(1 for r in rows if bool(((r.get("combined") or {}).get("passed", False))))
+            iou_pass = sum(1 for r in rows if bool(((r.get("iou_union") or {}).get("passed", False))))
+            lat_pass = sum(1 for r in rows if bool(((r.get("latency") or {}).get("passed_p95", False))))
+            u_pass = sum(1 for r in rows if bool(((r.get("unsupported") or {}).get("passed", False))))
+            need = int((details.get("rule") or {}).get("need_passed_budgets", 0))
+            lat_tol = float((details.get("rule") or {}).get("latency_p95_tol_ratio", 0.0))
+            u_tol = float((details.get("rule") or {}).get("unsupported_tol_abs", 0.0))
+
+            # Pull paper-grade config from the baselines artifact itself.
+            try:
+                b = _load_json(Path(evidence))
+                seeds = b.get("seeds") or []
+                budgets = b.get("budgets") or []
+                n_boot = int(b.get("n_bootstrap", 0))
+                n_seed = len(seeds) if isinstance(seeds, list) else 0
+                n_budget_decl = len(budgets) if isinstance(budgets, list) else 0
+                proto = (
+                    f"budgets={n_budget_decl}, seeds={n_seed}, n_boot={n_boot}, paired bootstrap(H1>0)+Holm(budgets); "
+                    f"lat_p95<=+{lat_tol:.0%}, unsupported_delta<=+{u_tol:g}"
+                )
+            except Exception:
+                proto = f"paired bootstrap(H1>0)+Holm(budgets); lat_p95<=+{lat_tol:.0%}, unsupported_delta<=+{u_tol:g}"
+
+            key = (
+                f"combined_pass={combined_pass}/{n_budget}(need{need}); "
+                f"iou_pass={iou_pass}/{n_budget}(need{need}); "
+                f"lat_p95_pass={lat_pass}/{n_budget}; unsupported_pass={u_pass}/{n_budget}"
+            )
+
+        elif claim == "C0002":
+            evidence = str(details.get("path", "-"))
+            paper = details.get("paper") or {}
+            key = (
+                f"n_boot={int(paper.get('n_bootstrap', 0))}; "
+                f"CI_high={_format_num(float(paper.get('mean_normalized_regret_ci_high', 1.0)), 4)}; "
+                f"naive_CI_low={_format_num(float(paper.get('naive_always_fixed_grid_ci_low', 1.0)), 4)}"
+            )
+            proto = "dev->test, AIC/BIC model fit, bootstrap CI, requires CI_high<0.15 & beats naive"
+
+        elif claim == "C0003":
+            evidence = str(details.get("path", "-"))
+            g_p = details.get("grounding_p_holm") or {}
+            u_p = details.get("unsupported_p_holm") or {}
+            g_m = details.get("grounding_mean_diff") or {}
+            u_m = details.get("unsupported_mean_diff") or {}
+            key = (
+                f"no_cite: dIoU={_format_num(float(g_m.get('no_cite', 0.0)), 4)}, p_holm={float(g_p.get('no_cite', 1.0)):.4g}; "
+                f"cite_swap: dUnsup={_format_num(float(u_m.get('cite_swap', 0.0)), 4)}, p_holm={float(u_p.get('cite_swap', 1.0)):.4g}"
+            )
+            proto = "paired bootstrap + Holm (counterfactual family)"
+
+        elif claim == "C0004":
+            evidence = str(details.get("path", "-"))
+            per_budget = details.get("per_budget") or {}
+            need = int((details.get("rule") or {}).get("need_passed_budgets", 0))
+            n_boot = int((details.get("rule") or {}).get("n_bootstrap", 0))
+            budgets = 0
+            fg_pass = 0
+            rv_pass = 0
+            if isinstance(per_budget, dict):
+                fg = per_budget.get("fixed_grid") or []
+                rv = per_budget.get("roi_variance") or []
+                budgets = max(len(fg), len(rv))
+                fg_pass = sum(1 for r in fg if bool(r.get("passed", False)))
+                rv_pass = sum(1 for r in rv if bool(r.get("passed", False)))
+            key = f"fixed_grid_pass={fg_pass}/{budgets}(need{need}); roi_variance_pass={rv_pass}/{budgets}(need{need})"
+            proto = f"one-sided (H1>0) + Holm(budgets), n_boot={n_boot}"
+
+        elif claim == "C0005":
+            evidence = str(details.get("path", "-"))
+            tau = float(details.get("best_tau", 0.0))
+            max_miss = float(details.get("max_critical_miss_rate", 0.05))
+            max_ece = float(details.get("max_refusal_ece", 0.15))
+            max_rr = float(details.get("max_refusal_rate", 0.20))
+            per_budget = details.get("per_budget") or []
+            n_budget = len(per_budget) if isinstance(per_budget, list) else 0
+            u_improved = sum(1 for r in per_budget if bool(r.get("passed_unsupported", False))) if isinstance(per_budget, list) else 0
+            miss_max = max((float(r.get("critical_miss_rate", 0.0)) for r in per_budget), default=0.0)
+            ece_max = max((float(r.get("refusal_ece", 0.0)) for r in per_budget), default=0.0)
+            rr_max = max((float(r.get("refusal_rate", 0.0)) for r in per_budget), default=0.0)
+            key = (
+                f"tau={tau:g}; miss_max={miss_max:.4g}<= {max_miss:g}; "
+                f"ece_max={ece_max:.4g}<= {max_ece:g}; rr_max={rr_max:.4g}<= {max_rr:g}; "
+                f"unsupported_improved={u_improved}/{n_budget}"
+            )
+            proto = "hard gates per budget + need>=2/3 budgets improve unsupported"
+
+        elif claim == "C0006":
+            evidence = str(details.get("path", "-"))
+            strong = details.get("ct2rep_strong") or {}
+            key = (
+                f"budget_accounting={bool(details.get('has_budget_accounting', False))}; "
+                f"strong_weights={bool(strong.get('weights_exists', False))}; "
+                f"frame_f1_last={float(strong.get('frame_f1_last_budget_mean', 0.0)):.4f}>= {float(strong.get('min_frame_f1', 0.0)):.2f}"
+            )
+            proto = "baseline coverage + audited cost accounting + strong baseline non-degenerate"
+
+        lines.append(f"| `{item}` | {verdict} | {key} | {proto} | `{evidence}` |")
+
+    for cid in ["C0001", "C0002", "C0003", "C0004", "C0005", "C0006"]:
+        _verdict_row(cid, cid)
+
+    omega = _load_json(omega_json)
+    primary = omega.get("primary") or {}
+    key = (
+        f"mean_diff={_format_num(float(primary.get('mean_diff', 0.0)), 4)}; "
+        f"CI=[{_format_num(float(primary.get('ci_low', 0.0)), 4)},{_format_num(float(primary.get('ci_high', 0.0)), 4)}]; "
+        f"p1={float(primary.get('p_value_one_sided', 1.0)):.4g}; "
+        f"p_holm={float(primary.get('p_value_holm_secondary', 1.0)):.4g}; "
+        f"positive={int(primary.get('positive_seed_count', 0))}/{int(primary.get('seed_count', 0))}"
+    )
+    proto = "pooled one-sided test + secondary Holm over counterfactual family"
+    lines.append(f"| `V0003/omega_perm` | {'Pass' if bool(primary.get('passed_secondary_holm', False)) else 'Fail'} | {key} | {proto} | `{str(omega_json)}` |")
+    lines.append("")
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Build README tables for paper-style summary.")
     ap.add_argument("--audit-json", type=str, default="outputs/oral_audit.json")
@@ -229,6 +398,9 @@ def main() -> int:
     ap.add_argument("--rb-root", type=str, default="outputs/E0167RB-ct_rate-tsseg-effusion-counterfactual-full-seed0")
     ap.add_argument("--rc-root", type=str, default="outputs/E0167RC-ct_rate-tsseg-effusion-counterfactual-full-seed0")
     ap.add_argument("--rd-root", type=str, default="outputs/E0167RD-ct_rate-tsseg-effusion-counterfactual-full-seed0")
+    ap.add_argument("--proof-check-script", type=str, default="scripts/proof_check.py")
+    ap.add_argument("--proof-profile", type=str, default="real")
+    ap.add_argument("--omega-json", type=str, default="outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json")
     ap.add_argument("--out-dir", type=str, default="docs/paper_assets/tables")
     args = ap.parse_args()
 
@@ -238,6 +410,7 @@ def main() -> int:
     t1 = out_dir / "table1_claims_real.md"
     t2 = out_dir / "table2_v0003_cross_dataset.md"
     t3 = out_dir / "table3_omega_variant_search.md"
+    t4 = out_dir / "table4_oral_minset.md"
 
     build_table1_claims(Path(args.audit_json), t1)
     build_table2_v0003(
@@ -257,16 +430,25 @@ def main() -> int:
         },
         t3,
     )
+    build_table4_oral_minset(
+        proof_check_script=Path(args.proof_check_script),
+        proof_profile=str(args.proof_profile),
+        omega_json=Path(args.omega_json),
+        out_path=t4,
+    )
 
     manifest = {
         "generated_at_utc": _now_iso(),
         "out_dir": str(out_dir),
-        "tables": [str(t1), str(t2), str(t3)],
+        "tables": [str(t1), str(t2), str(t3), str(t4)],
         "sources": {
             "audit_json": str(Path(args.audit_json).resolve()),
             "e0166_json": str(Path(args.e0166_json).resolve()),
             "e0167r_json": str(Path(args.e0167r_json).resolve()),
             "e0167r2_json": str(Path(args.e0167r2_json).resolve()),
+            "proof_check_script": str((ROOT / Path(args.proof_check_script)).resolve()),
+            "proof_profile": str(args.proof_profile),
+            "omega_json": str(Path(args.omega_json).resolve()),
         },
     }
     (out_dir / "table_manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
