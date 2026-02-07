@@ -81,7 +81,7 @@
 
 **Evidence checked**
 - Paper-grade grounding proof (mini, paired bootstrap + Holm, multi-budget): `outputs/E0143-full/figX_grounding_proof.json`
-- (Stronger supplement) Grounding proof on 100g via saliency-scored citations: `outputs/E0156-grounding_proof_100g_saliency_full/figX_grounding_proof.json`
+- (Stronger supplement, seed20) Grounding proof on 100g via saliency-scored citations: `outputs/E0156-grounding_proof_100g_saliency_seed20/figX_grounding_proof.json`
 
 **What is proved**
 - 在 `B={2e6,3e6,4e6,5e6,6e6,7e6}`、`seeds>=5`、`n_bootstrap>=20000` 下，`provetok_lesionness` 的 `iou_union` 相对 `fixed_grid` 与 `roi_variance` 均为 **正向且 one-sided paired bootstrap + Holm 后显著**（6/6 budgets 通过；见 `python scripts/proof_check.py` 的 C0004）。

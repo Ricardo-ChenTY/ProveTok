@@ -631,7 +631,7 @@ def check_c0004() -> ClaimCheck:
     if _profile_is_real():
         # Prefer the newest paper-grade grounding proof if present.
         preferred_news = [
-            ROOT / "outputs" / "E0165-full2" / "figX_grounding_proof.json",
+            ROOT / "outputs" / "E0156-grounding_proof_100g_saliency_seed20" / "figX_grounding_proof.json",
             ROOT / "outputs" / "E0165-full" / "figX_grounding_proof.json",
         ]
         preferred_old = ROOT / "outputs" / "E0156-grounding_proof_100g_saliency_full" / "figX_grounding_proof.json"

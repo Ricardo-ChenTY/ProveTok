@@ -171,7 +171,7 @@ def _artifact_status(default_report: Dict[str, Any], real_report: Dict[str, Any]
         ("C0001(real)", str((c1.get("details") or {}).get("baselines", ROOT / "outputs" / "E0164-full" / "baselines_curve_multiseed.json"))),
         ("C0002(real)", str((c2.get("details") or {}).get("path", ROOT / "outputs" / "E0161-full" / "fig3_regret_sweep.json"))),
         ("C0003(real)", str((c3.get("details") or {}).get("path", ROOT / "outputs" / "E0162-full"))),
-        ("C0004(real)", str((c4.get("details") or {}).get("path", ROOT / "outputs" / "E0156-grounding_proof_100g_saliency_full" / "figX_grounding_proof.json"))),
+        ("C0004(real)", str((c4.get("details") or {}).get("path", ROOT / "outputs" / "E0156-grounding_proof_100g_saliency_seed20" / "figX_grounding_proof.json"))),
         ("C0005(default/real)", str((c5.get("details") or {}).get("path", ROOT / "outputs" / "E0144-full" / "figX_refusal_calibration.json"))),
         ("C0006(real)", str((c6.get("details") or {}).get("path", ROOT / "outputs" / "E0164-full" / "baselines_curve_multiseed.json"))),
     ]

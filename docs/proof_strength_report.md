@@ -27,7 +27,7 @@
     - `outputs/E0164-full/baselines_curve_multiseed.json`（C0001/C0006，real 口径）
     - `outputs/E0142-full/baselines_curve_multiseed.json` + `outputs/E0141-full/fig3_results.json`（C0002）
     - `outputs/E0143-full/figX_grounding_proof.json`（C0004；ReXGroundingCT-mini）
-    - （更强补充）`outputs/E0156-grounding_proof_100g_saliency_full/figX_grounding_proof.json`（C0004；ReXGroundingCT-100g；用 `outputs/E0155-train_saliency_cnn3d_100g/saliency_cnn3d.pt` 重写 token.score）
+    - （更强补充，seed20）`outputs/E0156-grounding_proof_100g_saliency_seed20/figX_grounding_proof.json`（C0004；ReXGroundingCT-100g；用 `outputs/E0155-train_saliency_cnn3d_100g/saliency_cnn3d.pt` 重写 token.score）
     - `outputs/E0144-full/figX_refusal_calibration.json`（C0005）
 
 ---
@@ -197,7 +197,7 @@
 
 **已解决：100g 上的 C0004 现在可 paper-grade 通过（6/6 budgets × 2 baselines）**
 - `outputs/E0155-train_saliency_cnn3d_100g/`：训练 `SaliencyCNN3D`（监督目标是 union lesion mask；test 推理不使用 GT mask），导出 `saliency_cnn3d.pt`
-- `outputs/E0156-grounding_proof_100g_saliency_full/`：在 `rexgroundingct_100g` 的 test(split=test) 上，用 `saliency_prob` 对每个 token cell 做 **mean pooling** 并 `score_fuse=override`（纯 saliency）重写 token.score，再跑 `figX_grounding_proof`：
+- `outputs/E0156-grounding_proof_100g_saliency_seed20/`：在 `rexgroundingct_100g` 的 test(split=test) 上，用 `saliency_prob` 对每个 token cell 做 **mean pooling** 并 `score_fuse=override`（纯 saliency）重写 token.score，再跑 `figX_grounding_proof`：
   - 对 `fixed_grid`：`iou_union` one-sided + Holm 后 **6/6 budgets PASS**
   - 对 `roi_variance`：`iou_union` one-sided + Holm 后 **6/6 budgets PASS**
 
@@ -297,4 +297,4 @@
 5. **E0143-full**：paper-grade grounding proof（Holm，多 baselines）。
 6. **E0144-full**：paper-grade refusal calibration（ECE/refusal-rate hard gates）。
 7. **E0155-train_saliency_cnn3d_100g**：训练 SaliencyCNN3D（100g），为更强 C0004/C0003 optional 提供稳定 token.score。
-8. **E0156-grounding_proof_100g_saliency_full**：100g 上的 paper-grade grounding proof（6 budgets × 5 seeds × 20k bootstrap），`fixed_grid/roi_variance` 均 6/6 budgets PASS。
+8. **E0156-grounding_proof_100g_saliency_seed20**：100g 上的 paper-grade grounding proof（6 budgets × 20 seeds × 20k bootstrap），`fixed_grid/roi_variance` 均 6/6 budgets PASS。
