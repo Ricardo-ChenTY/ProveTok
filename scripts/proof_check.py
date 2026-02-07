@@ -155,37 +155,43 @@ def _is_paper_grade_c0001_curve(path: Path) -> bool:
     )
 
 
-def _select_real_e0164_baselines_curve(*, require_paper_grade: bool) -> Optional[Path]:
-    """Resolve E0164 baselines_curve artifact robustly for real profile.
+def _select_real_baselines_curve(*, require_paper_grade: bool) -> Optional[Path]:
+    """Resolve baselines_curve artifact robustly for real profile.
 
     Selection policy:
-    1) Prefer `outputs/E0164-full/baselines_curve_multiseed.json`.
-    2) If paper-grade is required and preferred is not paper-grade, scan `E0164*`
-       and pick the newest paper-grade candidate.
-    3) Otherwise fall back to preferred (if exists) or newest candidate.
+    1) Prefer `outputs/E0164-full/baselines_curve_multiseed.json` (canonical proof artifact).
+    2) Else prefer `outputs/E0171-full3/baselines_curve_multiseed.json` (adds correctness proxies).
+    3) If paper-grade is required, fall back to the newest paper-grade candidate among
+       `E0164*` then `E0171*`.
     """
-    preferred = ROOT / "outputs" / "E0164-full" / "baselines_curve_multiseed.json"
-    candidates = list((ROOT / "outputs").glob("E0164*/baselines_curve_multiseed.json"))
+    preferred_paths = [
+        ROOT / "outputs" / "E0164-full" / "baselines_curve_multiseed.json",
+        ROOT / "outputs" / "E0171-full3" / "baselines_curve_multiseed.json",
+    ]
+
+    candidates: List[Path] = []
+    candidates.extend((ROOT / "outputs").glob("E0164*/baselines_curve_multiseed.json"))
+    candidates.extend((ROOT / "outputs").glob("E0171*/baselines_curve_multiseed.json"))
     candidates = [p for p in candidates if p.exists()]
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
 
-    if preferred.exists():
-        if not require_paper_grade:
-            return preferred
-        if _is_paper_grade_c0001_curve(preferred):
-            return preferred
-        for p in candidates:
-            if p == preferred:
-                continue
-            if _is_paper_grade_c0001_curve(p):
+    if not require_paper_grade:
+        for p in preferred_paths:
+            if p.exists():
                 return p
-        return preferred
+        return candidates[0] if candidates else None
 
-    if require_paper_grade:
-        for p in candidates:
-            if _is_paper_grade_c0001_curve(p):
-                return p
+    for p in preferred_paths:
+        if p.exists() and _is_paper_grade_c0001_curve(p):
+            return p
 
+    for p in candidates:
+        if _is_paper_grade_c0001_curve(p):
+            return p
+
+    for p in preferred_paths:
+        if p.exists():
+            return p
     return candidates[0] if candidates else None
 
 
@@ -251,7 +257,7 @@ def check_c0001() -> ClaimCheck:
     """Pareto dominate in matched compute with paper-grade latency/trust constraints."""
     base_path = None
     if _profile_is_real():
-        base_path = _select_real_e0164_baselines_curve(require_paper_grade=True)
+        base_path = _select_real_baselines_curve(require_paper_grade=True)
         if base_path is None:
             return ClaimCheck(
                 claim_id="C0001",
@@ -623,17 +629,27 @@ def check_c0004() -> ClaimCheck:
     """Pixel-level citation grounding significantly improves on ReXGroundingCT (paper-grade)."""
     path: Optional[Path] = None
     if _profile_is_real():
-        preferred = ROOT / "outputs" / "E0156-grounding_proof_100g_saliency_full" / "figX_grounding_proof.json"
-        if preferred.exists():
-            path = preferred
-        else:
-            path = _find_latest(
-                patterns=[
-                    "E0165*/figX_grounding_proof.json",
-                    "E0156*/figX_grounding_proof.json",
-                ],
-                preferred_roots=[ROOT / "outputs"],
-            )
+        # Prefer the newest paper-grade grounding proof if present.
+        preferred_news = [
+            ROOT / "outputs" / "E0165-full2" / "figX_grounding_proof.json",
+            ROOT / "outputs" / "E0165-full" / "figX_grounding_proof.json",
+        ]
+        preferred_old = ROOT / "outputs" / "E0156-grounding_proof_100g_saliency_full" / "figX_grounding_proof.json"
+        for p in preferred_news:
+            if p.exists():
+                path = p
+                break
+        if path is None:
+            if preferred_old.exists():
+                path = preferred_old
+            else:
+                path = _find_latest(
+                    patterns=[
+                        "E0165*/figX_grounding_proof.json",
+                        "E0156*/figX_grounding_proof.json",
+                    ],
+                    preferred_roots=[ROOT / "outputs"],
+                )
         if path is None:
             return ClaimCheck(
                 "C0004",
@@ -1088,7 +1104,7 @@ def check_c0005() -> ClaimCheck:
 def check_c0006() -> ClaimCheck:
     path: Optional[Path] = None
     if _profile_is_real():
-        path = _select_real_e0164_baselines_curve(require_paper_grade=True)
+        path = _select_real_baselines_curve(require_paper_grade=True)
         if path is None:
             return ClaimCheck(
                 "C0006",

@@ -233,6 +233,75 @@ def build_fig4_counterfactual(omega_json: Path, out_path: Path) -> None:
     _save_figure(fig, out_path)
 
 
+def build_fig7_omega_seed_stability(omega_json: Path, out_path: Path) -> None:
+    """Seed-level stability view for omega-permutation pooled report.
+
+    Plots per-seed mean diff with bootstrap CI to make variance/power visible.
+    """
+    d = _load_json(omega_json)
+    rows = d.get("per_seed_primary", []) or []
+    if not rows:
+        raise ValueError(f"No per_seed_primary found in {omega_json}")
+    rows = sorted(rows, key=lambda r: int(r.get("seed", 0)))
+
+    seeds = [int(r.get("seed", 0)) for r in rows]
+    means = [float(r.get("mean_diff", 0.0)) for r in rows]
+    lo = [float(r.get("ci_low", m)) for r, m in zip(rows, means)]
+    hi = [float(r.get("ci_high", m)) for r, m in zip(rows, means)]
+    yerr = [[m - l for m, l in zip(means, lo)], [h - m for h, m in zip(hi, means)]]
+    colors = ["#2ca02c" if m > 0 else "#d62728" for m in means]
+
+    fig, ax = plt.subplots(1, 1, figsize=(10.6, 3.8))
+    ax.errorbar(seeds, means, yerr=yerr, fmt="o", capsize=3, linewidth=1.4, color="#333333")
+    ax.scatter(seeds, means, s=42, c=colors, alpha=0.9, zorder=3)
+    ax.axhline(0.0, color="#111111", linewidth=1.0)
+    ax.set_xlabel("Seed")
+    ax.set_ylabel("Mean diff (orig - omega_perm)")
+    ax.set_title("Omega-Permutation: Per-Seed Effect with 95% CI")
+    ax.grid(alpha=0.25, axis="y")
+
+    primary = d.get("primary", {}) or {}
+    pos = int(primary.get("positive_seed_count", sum(1 for m in means if m > 0)))
+    n = int(primary.get("seed_count", len(rows)))
+    subtitle = (
+        f"pooled mean={float(primary.get('mean_diff', 0.0)):.4f} "
+        f"CI=[{float(primary.get('ci_low', 0.0)):.4f},{float(primary.get('ci_high', 0.0)):.4f}] "
+        f"| positive={pos}/{n}"
+    )
+    fig.suptitle(subtitle, fontsize=10.5, y=1.02)
+    _save_figure(fig, out_path)
+
+
+def build_fig8_critical_recall(baselines_json: Path, out_path: Path) -> None:
+    """Clinical correctness proxy: critical-present recall vs budget."""
+    d = _load_json(baselines_json)
+    budgets = [float(b) for b in d.get("budgets", [])]
+    if not budgets:
+        raise ValueError(f"No budgets found in {baselines_json}")
+    x = _budget_millions(budgets)
+    metrics = d.get("metrics", {}) or {}
+    if "critical_present_recall" not in metrics:
+        raise ValueError("Missing metric 'critical_present_recall' (need E0171+ baselines curve).")
+
+    chosen = {
+        "provetok_lesionness": ("ProveTok-Lesionness", "#1f77b4"),
+        "fixed_grid": ("Fixed-Grid", "#ff7f0e"),
+        "roi_variance": ("ROI-Variance", "#2ca02c"),
+        "ct2rep_strong": ("CT2Rep-Strong", "#9467bd"),
+    }
+
+    fig, ax = plt.subplots(1, 1, figsize=(10.6, 3.8))
+    for key, (label, color) in chosen.items():
+        if key in metrics.get("critical_present_recall", {}):
+            _plot_series_with_ci(ax, x, metrics["critical_present_recall"][key], label, color)
+    ax.set_title("Critical-Present Recall (Proxy) vs Budget")
+    ax.set_xlabel("Budget (M units)")
+    ax.set_ylabel("critical_present_recall")
+    ax.grid(alpha=0.25)
+    ax.legend(frameon=False, ncol=4, loc="upper center", bbox_to_anchor=(0.5, 1.22))
+    _save_figure(fig, out_path)
+
+
 def _case_issue_summary(case_json: dict) -> str:
     issues = case_json.get("issues", [])
     if not issues:
@@ -338,6 +407,12 @@ def build_fig6_refusal_calibration(refusal_json: Path, out_path: Path) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Build unified paper figures for README.")
     ap.add_argument("--baselines-json", type=str, default="outputs/E0164-full/baselines_curve_multiseed.json")
+    ap.add_argument(
+        "--critical-json",
+        type=str,
+        default="",
+        help="Optional baselines_curve_multiseed.json that contains clinical correctness proxies (e.g., E0171+).",
+    )
     ap.add_argument("--regret-json", type=str, default="outputs/E0161-full/fig3_regret_sweep.json")
     ap.add_argument("--omega-json", type=str, default="outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json")
     ap.add_argument("--case-root", type=str, default="outputs/E0163-full-v3")
@@ -355,6 +430,8 @@ def main() -> int:
     fig4 = out_dir / "fig4_counterfactual_power.png"
     fig5 = out_dir / "fig5_case_studies.png"
     fig6 = out_dir / "fig6_refusal_calibration.png"
+    fig7 = out_dir / "fig7_omega_seed_stability.png"
+    fig8 = out_dir / "fig8_critical_recall.png"
 
     build_fig1_system(fig1)
     build_fig2_budget_curves(Path(args.baselines_json), fig2)
@@ -362,12 +439,21 @@ def main() -> int:
     build_fig4_counterfactual(Path(args.omega_json), fig4)
     build_fig5_cases(Path(args.case_root), fig5, max_cases=args.max_cases)
     build_fig6_refusal_calibration(Path(args.refusal_json), fig6)
+    build_fig7_omega_seed_stability(Path(args.omega_json), fig7)
+    critical_src = Path(args.critical_json) if args.critical_json else Path(args.baselines_json)
+    try:
+        build_fig8_critical_recall(critical_src, fig8)
+        has_fig8 = True
+    except Exception:
+        # Optional: only available when baselines_json contains critical proxies (E0171+).
+        has_fig8 = False
 
     manifest = {
         "generated_at_utc": _now_iso(),
         "out_dir": str(out_dir),
         "sources": {
             "baselines_json": str(Path(args.baselines_json).resolve()),
+            "critical_json": str(Path(args.critical_json).resolve()) if args.critical_json else "",
             "regret_json": str(Path(args.regret_json).resolve()),
             "omega_json": str(Path(args.omega_json).resolve()),
             "case_root": str(Path(args.case_root).resolve()),
@@ -380,7 +466,8 @@ def main() -> int:
             str(fig4),
             str(fig5),
             str(fig6),
-        ],
+            str(fig7),
+        ] + ([str(fig8)] if has_fig8 else []),
     }
     (out_dir / "figure_manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 

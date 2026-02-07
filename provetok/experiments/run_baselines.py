@@ -48,6 +48,7 @@ from ..utils.artifact import build_artifact_meta, try_manifest_revision
 from ..verifier import verify
 from ..verifier.rules import RULE_SET_VERSION
 from ..verifier.taxonomy import TAXONOMY_VERSION
+from ..verifier.taxonomy import is_critical_finding
 from ..data import make_dataloader
 from ..data.frame_extractor import FrameExtractor, frames_to_report
 from .utils import create_synthetic_volume, make_output_dir, save_results_json, set_seed
@@ -258,6 +259,8 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
     for name in tokenizers.keys():
         results[name] = {
             "frame_f1": [],
+            "critical_present_f1": [],
+            "critical_present_recall": [],
             "iou": [],
             "dice": [],
             "hit_rate": [],
@@ -330,6 +333,11 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             gt_report_raw = str(gt_report)
             volume_shape = cfg.volume_shape
 
+        gt_critical_present = [
+            f for f in gt_frames
+            if is_critical_finding(getattr(f, "finding", "")) and str(getattr(f, "polarity", "")) in ("present", "positive")
+        ]
+
         if pcg_llm is not None:
             pcg_base = pcg_llm
             pcg_provetok = pcg_llm
@@ -400,7 +408,23 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             for iss in issues:
                 issue_counts[iss.issue_type] = issue_counts.get(iss.issue_type, 0) + 1
 
-            frame_f1 = compute_frame_f1(gen_eval.frames, gt_frames, threshold=0.3).f1
+            frame_metrics = compute_frame_f1(gen_eval.frames, gt_frames, threshold=0.3)
+            frame_f1 = float(frame_metrics.f1)
+
+            # Clinical correctness proxy for critical findings:
+            # average over studies where GT has at least one critical present frame.
+            if gt_critical_present:
+                pred_critical_present = [
+                    f for f in gen_eval.frames
+                    if is_critical_finding(getattr(f, "finding", "")) and str(getattr(f, "polarity", "")) in ("present", "positive")
+                ]
+                crit = compute_frame_f1(pred_critical_present, gt_critical_present, threshold=0.3)
+                critical_present_f1 = float(crit.f1)
+                critical_present_recall = float(crit.recall)
+            else:
+                critical_present_f1 = float("nan")
+                critical_present_recall = float("nan")
+
             g = _grounding_union(gen_eval, tokens_eval, lesion_masks, volume_shape)
             iou = float(g.get("iou_union", 0.0))
             dice = float(g.get("dice_union", 0.0))
@@ -412,6 +436,8 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             combined = float(cfg.nlg_weight) * float(frame_f1) + float(cfg.grounding_weight) * float(iou)
 
             results[name]["frame_f1"].append(float(frame_f1))
+            results[name]["critical_present_f1"].append(float(critical_present_f1))
+            results[name]["critical_present_recall"].append(float(critical_present_recall))
             results[name]["iou"].append(float(iou))
             results[name]["dice"].append(float(dice))
             results[name]["hit_rate"].append(float(hit))
@@ -459,8 +485,9 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
     # Aggregate
     summary = {}
     for name, vals in results.items():
-        summary[name] = {k: float(np.mean(v)) for k, v in vals.items()}
-        summary[name].update({f"{k}_std": float(np.std(v)) for k, v in vals.items()})
+        # Use nanmean/nanstd to support conditional metrics (e.g., critical_present_*).
+        summary[name] = {k: float(np.nanmean(v)) for k, v in vals.items()}
+        summary[name].update({f"{k}_std": float(np.nanstd(v)) for k, v in vals.items()})
 
     budget_target = None
     if cfg.flops_total and cfg.flops_total > 0:

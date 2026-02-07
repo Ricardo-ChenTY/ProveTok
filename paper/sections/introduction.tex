@@ -13,7 +13,7 @@ These pieces are rarely tied together under one matched-cost, end-to-end, script
 We propose \ProveTok, which rewrites 3D CT report generation as a coupled problem of \emph{budgeted evidence selection} and \emph{proof-carrying generation}.
 We define a unified compute budget $\Btotal=\Benc+\Bgen$ and an output contract consisting of \emph{frames}, \emph{citations}, \emph{refusal}, and a \emph{verifier trace}.
 Here, a \emph{frame} is an atomic, typed clinical statement (e.g., a finding assertion) that is required to cite evidence tokens with explicit 3D support regions $\Omega$.
-Groundedness is not an after-the-fact visualization: every generated frame must ``carry its proof'' (citations + verifier trace) or be rejected by a verifier that triggers refinement or calibrated refusal.
+Groundedness is not an after-the-fact visualization: every generated frame must ``carry its proof'' (a verifier-checkable evidence chain: citations + trace), otherwise it is rejected by a verifier that triggers refinement or calibrated refusal.
 
 \begin{figure*}[t]
   \centering

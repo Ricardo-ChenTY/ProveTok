@@ -1,6 +1,7 @@
 3D CT report generation fails most dangerously not when it is stylistically imperfect, but when it produces unsupported clinical assertions under strict inference budgets.
 Prior systems often treat grounding and citations as post-hoc explanations and refusal as an ad-hoc threshold, making it difficult to jointly audit latency, supportedness, and safety.
 We present \ProveTok, a proof-carrying generation protocol that couples \emph{budgeted evidence tokenization} (BET) and \emph{proof-carrying generation} (PCG) under a unified budget constraint $\Btotal=\Benc+\Bgen$.
+Throughout, ``proof-carrying'' refers to a verifier-checkable evidence chain (citations + trace), not a proof of clinical truth.
 BET selects evidence tokens where each token is bound to an explicit 3D support region $\Omega$ (e.g., a multi-resolution spatial cell) within $\Benc$, while PCG requires each generated clinical statement to carry machine-checkable citations and a verifier trace within $\Bgen$; otherwise, the system triggers refinement or calibrated refusal.
 We implement claim-level proof rules and evaluate under multi-budget, multi-seed protocols using paired bootstrap with Holm correction.
 On a gold-mask (``real'') profile, \ProveTok passes all primary claims across budgets while satisfying hard gates on latency, supportedness, and refusal calibration (Table~\ref{tab:oral-minset}).

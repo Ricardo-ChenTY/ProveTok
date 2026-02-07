@@ -17,6 +17,17 @@ Figure~\ref{fig:budget} shows multi-budget curves under matched-cost evaluation,
   \label{fig:budget}
 \end{figure*}
 
+\subsection{Clinical Correctness Proxy: Critical-Present Recall}
+Supportedness is a necessary but not sufficient condition for clinical correctness.
+As a minimal correctness proxy, Figure~\ref{fig:critical-recall} reports critical-present recall over a fixed, audited set of safety-critical findings, evaluated under the same matched-budget protocol.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig8_critical_recall.png}
+  \caption{Critical-present recall vs. budget (data: \texttt{\detokenize{outputs/E0171-full3/baselines_curve_multiseed.json}}).}
+  \label{fig:critical-recall}
+\end{figure*}
+
 \subsection{Allocation is Non-trivial: Regret}
 Figure~\ref{fig:regret} quantifies allocation regret, supporting that budget allocation can be modeled and evaluated beyond post-hoc configuration selection.
 
@@ -36,6 +47,17 @@ Figure~\ref{fig:counterfactual} summarizes pooled significance for $\omega$-perm
   \includegraphics[width=\textwidth]{fig4_counterfactual_power.png}
   \caption{Pooled counterfactual power and significance for $\omega$-permutation (data: \texttt{\detokenize{outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json}}).}
   \label{fig:counterfactual}
+\end{figure*}
+
+\paragraph{Seed-level stability.}
+Figure~\ref{fig:omega-seeds} shows the per-seed effect sizes and confidence intervals for $\omega$-permutation.
+The direction is consistent across seeds (19/20 positive), but single-seed tests can be underpowered; this motivates pooled, family-wise controlled protocols rather than relying on a small number of seeds.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig7_omega_seed_stability.png}
+  \caption{Seed-level $\omega$-permutation effect sizes with 95\% confidence intervals (data: \texttt{\detokenize{outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json}}).}
+  \label{fig:omega-seeds}
 \end{figure*}
 
 \subsection{Refusal Calibration (Anti-silencing)}

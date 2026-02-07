@@ -5,7 +5,8 @@ Importantly, refusal is evaluated with explicit anti-silencing gates (critical m
 
 \paragraph{Limitations.}
 Primary grounding claims rely on gold masks available in the real profile; cross-dataset stress tests use silver labels (automatic or pseudo masks) and should not be interpreted as replacing gold-mask evidence.
-Our counterfactual perturbations are designed to test the non-triviality of the citation channel; they do not fully capture clinical correctness beyond the audited metrics.
+Our ``proof-carrying'' contract provides verifier-checkable evidence binding (citations + trace), but it does not prove clinical truth: supportedness is a necessary condition, not a sufficient one.
+Our counterfactual perturbations are designed to test the non-triviality of the citation channel; they do not fully capture clinical correctness beyond the audited (and proxy) metrics.
 Finally, while our claim-level suite aims to be minimal and decisive, extending it to broader clinical settings will require additional datasets and stronger public baselines.
 
 \paragraph{Future work.}

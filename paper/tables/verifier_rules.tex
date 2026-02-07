@@ -1,0 +1,20 @@
+% Verifier ruleset summary (paper-facing).
+\begin{table*}[t]
+  \centering
+  \caption{\textbf{Rule-based verifier taxonomy (abridged).} The verifier is deterministic and versioned for audited artifacts. Each triggered rule emits an issue with an \texttt{evidence\_trace} containing cited token ids/cell ids and rule-specific intermediate values (Appendix schema). Thresholds shown are default audited settings.}
+  \label{tab:verifier-rules}
+  \begin{tabularx}{\textwidth}{@{}l l X l@{}}
+    \toprule
+    Rule & Type & Check (applies to asserted frames unless noted) & Key thresholds / outputs \\
+    \midrule
+    U1.0 & unsupported & Positive claim without any citations & severity=3; \texttt{token\_ids=[]} \\
+    U1.1 & unsupported & Low evidence strength: $\max_{t\in C_k} s(t) < \texttt{min\_score}$ & \texttt{min\_score=0.35}; \texttt{scores,max\_score} \\
+    U1.2 & unsupported & High uncertainty: $\min_{t\in C_k} u(t) > \texttt{max\_uncertainty}$ & \texttt{max\_uncertainty=0.7}; \texttt{uncertainties,min} \\
+    U1.3 & unsupported & Insufficient spatial coverage: $\sum_{t\in C_k} 8^{-\ell(t)} < \texttt{min\_coverage\_ratio}$ & \texttt{min\_coverage\_ratio=0.1}; \texttt{levels,coverage} \\
+    U1.4 & unsupported & Citation relevance proxy: cited tokens fail \texttt{recall@k} or \texttt{attention mass} under a deterministic query attention & \texttt{min\_recall@k=0.5}, \texttt{min\_att\_mass=0.2}; \texttt{topk\_token\_ids,recall@k,att\_mass} \\
+    O1.0 & overclaim & Specificity mismatch: laterality specified but only coarse evidence levels cited & \texttt{max\_coarse\_level=0}; \texttt{levels,max} \\
+    O1.1 & overclaim & High-confidence serious finding lacks strong evidence (score mismatch) & \texttt{avg\_evidence\_score}, \texttt{confidence} \\
+    \bottomrule
+  \end{tabularx}
+\end{table*}
+

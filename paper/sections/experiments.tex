@@ -17,6 +17,7 @@ Our evaluation emphasizes what is auditable:
 \begin{itemize}
   \item \textbf{Grounding.} When gold masks are available (real profile), we report sentence-level grounding metrics (e.g., IoU) that connect citations to spatial support.
   \item \textbf{Supportedness.} We report an \emph{unsupported rate} defined as the fraction of frames flagged by the verifier as unsupported (issue U1).
+  \item \textbf{Clinical correctness proxies.} We report frame-level correctness on structured findings (frame F1). For safety-critical findings, we additionally report \emph{critical-present recall} averaged over studies with at least one ground-truth critical present frame (the critical set is fixed and audited).
   \item \textbf{Refusal.} We report refusal rate and refusal calibration (ECE/reliability), and we enforce an anti-silencing constraint via \emph{critical miss-rate} (ground-truth critical findings that are refused).
 \end{itemize}
 

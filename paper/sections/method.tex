@@ -11,27 +11,55 @@ The system output is a structured object containing (i) textual frames/statement
 Formally, BET produces evidence tokens $\{t_i\}$, where each token is associated with an explicit 3D support region $\Omega_i$ and metadata (e.g., resolution level and score).
 PCG generates frames $\{y_k\}$ and citations $C_k \subseteq \{t_i\}$, and a verifier $g(y_k, C_k)$ returns a pass/fail decision plus a failure type used for refinement or refusal.
 
+\paragraph{Evidence cells and support regions.}
+We represent spatial evidence with a multi-resolution dyadic grid.
+A \emph{cell} $c=(\ell, i_x, i_y, i_z)$ at level $\ell$ partitions the volume into $2^\ell$ bins per axis, yielding an octree-like refinement family.
+We use a deterministic mapping $\phi$ that maps a cell id to voxel indices, defining the support region $\Omega(c)=\phi(c; \mathrm{shape}(V)) \subseteq [1..D]\times[1..H]\times[1..W]$.
+An evidence token is a tuple $t_i=(e_i, c_i, \ell_i, s_i, u_i)$ where $e_i$ is an embedding pooled over $\Omega(c_i)$ from a 3D encoder feature map (mean pooling in our scaffold), $s_i\in[0,1]$ is an evidence score, and $u_i$ is an uncertainty proxy.
+This representation makes citations machine-checkable: a citation points to a token id, which deterministically implies a 3D support region.
+
 \subsection{BET: Budgeted Evidence Tokenization}
 BET constructs a set of evidence tokens $\{t_i\}$ under budget $\Benc$.
-Each token is associated with an explicit 3D support region $\Omega_i$ (e.g., a cell at a given resolution level) and a score indicating estimated evidential value.
-Conceptually, BET answers: \emph{which spatial regions are worth spending encoder compute on}?
-We support multiple tokenization families (fixed-grid, ROI-style, scored variants) while enforcing matched-cost evaluation by accounting for the realized encoder compute under $\Benc$.
+Conceptually, BET answers: \emph{which spatial regions are worth spending encoder compute on}, when each additional token consumes part of $\Benc$?
+In our implementation, encoding one active cell yields one token; budgets are expressed either directly as a token count ($b_{\mathrm{enc}}$) or via FLOPs/latency-matched accounting (Section~\ref{sec:exp}).
+
+\paragraph{Full-cover initialization to avoid early misses.}
+A greedy refinement policy that starts from a single root cell can ``commit'' too early and miss lesions entirely under strict budgets.
+We therefore initialize with a full-covering grid at an initial level $\ell_0$ such that $|{\mathcal C}_0|=(2^{\ell_0})^3 \le b_{\mathrm{enc}}$, and only then refine within this grid until reaching the budget.
+
+\paragraph{Refinement loop.}
+At step $s$, given the current active cell set ${\mathcal C}_s$, we (i) encode tokens for all $c\in{\mathcal C}_s$, (ii) run PCG to produce frames and citations, (iii) run the verifier to obtain a typed issue list with evidence traces, and (iv) select one cell $c^\star\in{\mathcal C}_s$ to split into its eight children.
+The selection is driven by either:
+\begin{itemize}
+  \item \textbf{Verifier-driven greedy.} If issues exist, prioritize cells referenced by the verifier evidence traces for failing frames (severity-weighted); otherwise split the cell with highest uncertainty $u$.
+  \item \textbf{EvidenceHead ranking.} A small head predicts an expected issue reduction $\Delta(c)$ from the cell embedding and the current issue context, and we split the cell maximizing $\Delta(c)$ with a small $\epsilon$-greedy exploration.
+\end{itemize}
+This makes allocation auditable: when refinement happens, the system can point to which verifier failure type triggered it and which cited cells were implicated.
 
 \subsection{PCG: Proof-Carrying Generation}
-PCG generates statements under budget $\Bgen$ with a hard contract: every statement must cite one or more evidence tokens.
-A verifier inspects the statement, its citations, and the implied evidence coverage; if the verifier flags insufficient support, the system triggers refinement (requesting additional evidence tokens or revising the statement) or outputs a calibrated refusal.
-This turns grounding from a post-hoc visualization into a protocol requirement.
+PCG generates statements under budget $\Bgen$ with a hard contract: every asserted statement must cite evidence tokens.
+We use a structured output space for auditability: the report is emitted as a set of typed \emph{frames} $y_k$ (finding type + slots such as polarity and laterality) together with citations $C_k$ and an accept probability $q_k$.
 
-In practice, the PCG loop follows a simple structure:
-\begin{enumerate}
-  \item Generate a candidate frame $y_k$ and a set of citations $C_k$.
-  \item Run the verifier to obtain an auditable outcome and failure type.
-  \item If failed, either refine (revise $y_k$ or request additional evidence tokens) or refuse based on calibrated thresholds.
-\end{enumerate}
+\paragraph{Frames and mandatory citations.}
+PCG uses query-based attention from a small set of learnable finding queries to token embeddings, producing per-frame features and attention weights.
+The top-$k$ attended tokens (or a score-interleaved variant) are recorded as citations $C_k$.
+Slot classifiers then read the frame features to generate the typed statement.
+
+\paragraph{Support probability and refusal.}
+PCG also outputs an accept probability $q_k\in[0,1]$ intended to represent \emph{evidence-backed support} for the frame (not necessarily clinical correctness).
+In our scaffold, $q_k$ is predicted by a small MLP from the frame feature together with citation strength proxies (e.g., maximum cited score) and decoding uncertainty (e.g., slot entropy).
+Frames with insufficient support are either refined (by requesting additional evidence tokens or revising the statement) or refused under a calibrated threshold (next subsection).
 
 \subsection{Verifier Taxonomy}
-We implement a lightweight verifier that categorizes failures into machine-checkable types (e.g., missing citation, insufficient spatial coverage, unsupported assertion) and emits a trace.
-The trace is used both for debugging and for claim-level auditing in our proof rules.
+We implement a lightweight, rule-based verifier that categorizes failures into machine-checkable types (e.g., missing citation, insufficient spatial coverage, citation irrelevance) and emits a trace.
+The verifier is deterministic and fixed for a paper artifact (versioned), and it is not trained to agree with the generator.
+Therefore, ``supportedness'' in our protocol is defined with respect to this verifier, and should not be conflated with clinical truth.
+
+\paragraph{Unsupportedness and overclaim.}
+For unsupportedness (U1), key checks include: positive claims must have citations; cited evidence must exceed minimum score / maximum uncertainty thresholds; and citations must cover non-trivial spatial extent.
+We approximate cited coverage by the sum of dyadic volume fractions, $\sum_{t\in C_k} 8^{-\ell(t)}$, and flag insufficient coverage below a fixed ratio.
+For citation relevance, we optionally score tokens with a deterministic query attention and require that citations recover the top-$k$ attended evidence with sufficient attention mass (Appendix).
+Overclaim (O1) captures specificity mismatches, e.g., a laterality-specific statement backed only by coarse evidence levels.
 
 \subsection{Refusal Calibration with Anti-Silencing Gates}
 Each frame $y_k$ is assigned a support probability $q_k \in [0,1]$ intended to estimate \emph{evidence-backed support} (not necessarily clinical correctness).

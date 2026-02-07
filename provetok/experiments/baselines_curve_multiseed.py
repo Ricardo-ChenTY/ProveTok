@@ -38,6 +38,13 @@ def _mean_and_ci_from_seed_sample_matrix(
         raise ValueError(f"Expected 2D array (S,N), got shape={x.shape}")
     if x.shape[1] == 0:
         return {"mean": 0.0, "ci_low": 0.0, "ci_high": 0.0}
+    # Some metrics are conditional (e.g., critical-present proxies). Represent
+    # undefined samples as NaN and drop them consistently across seeds.
+    if np.isnan(x).any():
+        keep = ~np.isnan(x).any(axis=0)
+        x = x[:, keep]
+        if x.shape[1] == 0:
+            return {"mean": 0.0, "ci_low": 0.0, "ci_high": 0.0}
     per_sample = x.mean(axis=0)
     res = bootstrap_mean_ci(per_sample.tolist(), n_boot=n_boot, seed=seed, ci=ci)
     return {"mean": float(res.mean), "ci_low": float(res.ci_low), "ci_high": float(res.ci_high)}
@@ -51,6 +58,11 @@ def _p95_and_ci_from_seed_sample_matrix(
         raise ValueError(f"Expected 2D array (S,N), got shape={x.shape}")
     if x.shape[1] == 0:
         return {"p95_s": 0.0, "ci_low": 0.0, "ci_high": 0.0}
+    if np.isnan(x).any():
+        keep = ~np.isnan(x).any(axis=0)
+        x = x[:, keep]
+        if x.shape[1] == 0:
+            return {"p95_s": 0.0, "ci_low": 0.0, "ci_high": 0.0}
     per_sample = x.mean(axis=0)
     res = bootstrap_quantile_ci(per_sample.tolist(), q=0.95, n_boot=n_boot, seed=seed, ci=ci)
     return {"p95_s": float(res.value), "ci_low": float(res.ci_low), "ci_high": float(res.ci_high)}
