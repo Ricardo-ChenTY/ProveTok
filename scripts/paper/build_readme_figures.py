@@ -90,12 +90,15 @@ def build_fig2_budget_curves(baselines_json: Path, out_path: Path) -> None:
     metrics = d.get("metrics", {})
     latency = d.get("latency", {})
 
+    # Some historical artifacts use `ct2rep_like` to denote the "no-proof" ablation;
+    # newer runs may emit `ct2rep_noproof`. Prefer `ct2rep_like` when both exist.
+    ct2rep_noproof_key = "ct2rep_like" if "ct2rep_like" in (metrics.get("combined", {}) or {}) else "ct2rep_noproof"
     chosen = {
         "provetok_lesionness": ("ProveTok-Lesionness", "#1f77b4"),
         "fixed_grid": ("Fixed-Grid", "#ff7f0e"),
         "roi_variance": ("ROI-Variance", "#2ca02c"),
         "ct2rep_strong": ("CT2Rep-Strong", "#9467bd"),
-        "ct2rep_like": ("CT2Rep-NoProof", "#8c564b"),
+        ct2rep_noproof_key: ("CT2Rep-NoProof", "#8c564b"),
     }
 
     fig, axes = plt.subplots(1, 3, figsize=(15.8, 4.2))

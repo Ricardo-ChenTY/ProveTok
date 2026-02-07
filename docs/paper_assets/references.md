@@ -19,7 +19,7 @@
 - Why here: 这是本文 grounding 口径的核心外部土壤（sentence-level pixel mask），使 IoU/Dice/hit-rate 成为“可验证证据”的一等指标。
 
 ## [5] Trust-Align（grounded attribution + learning to refuse）
-- Bibliography: Song et al. *Measuring and Enhancing Trustworthiness of LLMs in RAG through Grounded Attributions and Learning to Refuse*. arXiv:2409.11242 (2024). ICLR 2025 (Oral).
+- Bibliography: Song et al. *Measuring and Enhancing Trustworthiness of LLMs in RAG through Grounded Attributions and Learning to Refuse*. arXiv:2409.11242 (2024).
 - Why here: 用于定位“引用质量 + 拒答”作为可信生成的一部分，并解释我们为何把 refusal calibration 写入硬 gate。
 
 ## [6] TotalSegmentator（TS-Seg 外部 pseudo-mask 证据链）
