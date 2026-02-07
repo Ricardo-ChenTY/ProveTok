@@ -9,6 +9,7 @@
 
 ## TL;DR（Oral 速览）
 - 一张表抓主证据：`docs/paper_assets/tables/table4_oral_minset.md`（下文 §5.0 也内嵌同表）。
+- 外部有效性（V0004 / backbone transfer）：`docs/paper_assets/tables/table5_backbone_transfer.md`（冻结协议下的跨 backbone 汇总）。
 - 图表可复现：`python scripts/paper/build_readme_figures.py` / `python scripts/paper/build_readme_tables.py`（产物在 `docs/paper_assets/`）。
 - 机器审计门：`python scripts/proof_check.py --profile real` + `python scripts/oral_audit.py --sync --out outputs/oral_audit.json --strict`。
 - LaTeX 论文草稿（NeurIPS-style）：`paper/`（入口 `paper/main.tex`，已生成 `paper/main.pdf` 便于快速浏览；正式投稿请替换为官方 NeurIPS style files）。

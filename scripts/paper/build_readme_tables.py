@@ -384,6 +384,85 @@ def build_table4_oral_minset(
     out_path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def build_table5_backbone_transfer(*, v0004_report_json: Path, out_path: Path) -> None:
+    d = _load_json(v0004_report_json)
+
+    lines: List[str] = []
+    lines.append("# Table 5. V0004 Backbone Transfer (Summary)")
+    lines.append("")
+    lines.append("| Backbone | Setting | Seeds | N | n_boot | Combined (pos/sig) | IoU (pos/sig) | Unsupported (pos/sig) | Evidence |")
+    lines.append("|---|---|---:|---:|---:|---|---|---|---|")
+
+    def _metric_summary(rows: dict, metric: str) -> str:
+        arr = rows.get(metric) or []
+        if not isinstance(arr, list):
+            return "-"
+        total = len(arr)
+        if total == 0:
+            return "-"
+        pos = 0
+        sig = 0
+        mean = 0.0
+        for a in arr:
+            if not isinstance(a, dict):
+                continue
+            md = float(a.get("mean_diff", 0.0) or 0.0)
+            ph = float(a.get("p_holm", 1.0) or 1.0)
+            mean += md
+            if md > 0:
+                pos += 1
+            if md > 0 and ph < 0.05:
+                sig += 1
+        mean /= max(1, total)
+        return f"{pos}/{total} (sig {sig}/{total}, avg d={_format_num(mean, 4)})"
+
+    def _extract_n(rows: dict) -> int:
+        ns: List[int] = []
+        for metric in ("combined", "iou", "unsupported"):
+            arr = rows.get(metric) or []
+            if not isinstance(arr, list):
+                continue
+            for a in arr:
+                if not isinstance(a, dict):
+                    continue
+                if "n_samples" in a:
+                    ns.append(int(a.get("n_samples") or 0))
+        return max(ns) if ns else 0
+
+    backbones = [k for k in d.keys() if k not in ("notes",)]
+    order = {"toy": 0, "llama2": 1}
+    for backbone in sorted(backbones, key=lambda k: (order.get(k, 999), k)):
+        row = d.get(backbone) or {}
+        meta = row.get("meta") or {}
+        seeds = meta.get("seeds") or []
+        seeds_s = ",".join(str(s) for s in seeds) if isinstance(seeds, list) else str(seeds)
+        n_boot = int(meta.get("n_bootstrap_used", 0) or 0)
+        rows = row.get("rows") or {}
+        n = _extract_n(rows)
+
+        setting = f"{row.get('method', '-')}/{row.get('baseline', '-')}"
+        combined = _metric_summary(rows, "combined")
+        iou = _metric_summary(rows, "iou")
+        unsupported = _metric_summary(rows, "unsupported")
+
+        evidence = str(row.get("curve_path", "-"))
+        lines.append(
+            f"| `{backbone}` | {setting} | {seeds_s} | {n} | {n_boot} | {combined} | {iou} | {unsupported} | `{evidence}` |"
+        )
+
+    notes = d.get("notes") or {}
+    if isinstance(notes, dict):
+        lines.append("")
+        lines.append(
+            f"Notes: positive mean_diff indicates improvement; Holm family: `{notes.get('holm_family', '-')}`; "
+            f"bootstrap: `{notes.get('paired_bootstrap', '-')}`."
+        )
+        lines.append("")
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Build README tables for paper-style summary.")
     ap.add_argument("--audit-json", type=str, default="outputs/oral_audit.json")
@@ -401,6 +480,7 @@ def main() -> int:
     ap.add_argument("--proof-check-script", type=str, default="scripts/proof_check.py")
     ap.add_argument("--proof-profile", type=str, default="real")
     ap.add_argument("--omega-json", type=str, default="outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json")
+    ap.add_argument("--v0004-report-json", type=str, default="outputs/V0004-backbone-transfer/backbone_transfer_report.json")
     ap.add_argument("--out-dir", type=str, default="docs/paper_assets/tables")
     args = ap.parse_args()
 
@@ -411,6 +491,7 @@ def main() -> int:
     t2 = out_dir / "table2_v0003_cross_dataset.md"
     t3 = out_dir / "table3_omega_variant_search.md"
     t4 = out_dir / "table4_oral_minset.md"
+    t5 = out_dir / "table5_backbone_transfer.md"
 
     build_table1_claims(Path(args.audit_json), t1)
     build_table2_v0003(
@@ -436,11 +517,15 @@ def main() -> int:
         omega_json=Path(args.omega_json),
         out_path=t4,
     )
+    build_table5_backbone_transfer(
+        v0004_report_json=Path(args.v0004_report_json),
+        out_path=t5,
+    )
 
     manifest = {
         "generated_at_utc": _now_iso(),
         "out_dir": str(out_dir),
-        "tables": [str(t1), str(t2), str(t3), str(t4)],
+        "tables": [str(t1), str(t2), str(t3), str(t4), str(t5)],
         "sources": {
             "audit_json": str(Path(args.audit_json).resolve()),
             "e0166_json": str(Path(args.e0166_json).resolve()),
@@ -449,6 +534,7 @@ def main() -> int:
             "proof_check_script": str((ROOT / Path(args.proof_check_script)).resolve()),
             "proof_profile": str(args.proof_profile),
             "omega_json": str(Path(args.omega_json).resolve()),
+            "v0004_report_json": str(Path(args.v0004_report_json).resolve()),
         },
     }
     (out_dir / "table_manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

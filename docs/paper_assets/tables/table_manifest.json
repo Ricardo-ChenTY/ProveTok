@@ -1,11 +1,12 @@
 {
-  "generated_at_utc": "2026-02-07T20:11:11.154911+00:00",
+  "generated_at_utc": "2026-02-07T20:46:27.086714+00:00",
   "out_dir": "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/tables",
   "tables": [
     "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/tables/table1_claims_real.md",
     "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/tables/table2_v0003_cross_dataset.md",
     "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/tables/table3_omega_variant_search.md",
-    "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/tables/table4_oral_minset.md"
+    "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/tables/table4_oral_minset.md",
+    "/home/ubuntu/tiasha/ProveTok/docs/paper_assets/tables/table5_backbone_transfer.md"
   ],
   "sources": {
     "audit_json": "/home/ubuntu/tiasha/ProveTok/outputs/oral_audit.json",
@@ -14,6 +15,7 @@
     "e0167r2_json": "/home/ubuntu/tiasha/ProveTok/outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json",
     "proof_check_script": "/home/ubuntu/tiasha/ProveTok/scripts/proof_check.py",
     "proof_profile": "real",
-    "omega_json": "/home/ubuntu/tiasha/ProveTok/outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json"
+    "omega_json": "/home/ubuntu/tiasha/ProveTok/outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json",
+    "v0004_report_json": "/home/ubuntu/tiasha/ProveTok/outputs/V0004-backbone-transfer/backbone_transfer_report.json"
   }
 }

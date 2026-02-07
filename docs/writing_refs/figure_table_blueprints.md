@@ -91,6 +91,16 @@
 - Where: appendix (recommended)
 - Role: 证明不是“挑一个 omega 配置凑显著”，而是探索后锁定 baseline，再扩 seeds。
 
+### Table 5 — V0004 Backbone Transfer (Summary)
+- File: `docs/paper_assets/tables/table5_backbone_transfer.md`
+- Where: External Validity subsection (recommended appendix;正文仅保留 1–2 句话结论 + 指向表格)
+- Caption must include:
+  - 对比 backbones 名称与实现（ToyPCG / Llama2PCG 等）
+  - 冻结项：预算 sweep、verifier rules、refusal calibration（强调“无 per-backbone 重新调参”）
+  - 统计协议：paired bootstrap + Holm(budgets)（每个指标一个 family）
+  - 明确“positive mean\_diff 表示改进”的方向约定（尤其是 unsupported 指标）
+- Text hook: “The contract is (partially) backbone-agnostic under a frozen protocol; we report where transfer breaks and why.”
+
 ---
 
 ## Add-if-needed (paper-grade but currently missing)
@@ -100,4 +110,3 @@
 - Cost accounting table（FLOPs/latency/VRAM，解释 matched 协议如何执行）
 
 这些可以先放 appendix，避免正文被表格淹没。
-
