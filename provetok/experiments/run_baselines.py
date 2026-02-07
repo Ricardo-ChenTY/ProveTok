@@ -244,14 +244,15 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
         "slice_2p5d": SliceTokenizer2p5D(level=3, band=3),
         "roi_variance": ROIVarianceTokenizer(candidate_level=3),
         "roi_crop": ROICropTokenizer(candidate_level=3, roi_max_depth=6),
-        # Scaffold for a "strong report generation baseline" without proof-carrying protocol:
-        # no citations, no refusal (CT2Rep-like interface placeholder).
-        "ct2rep_like": FixedGridTokenizer(max_depth=6),
+        # Note: ct2rep_noproof is added below only when real trained weights exist.
     }
     if cfg.ct2rep_strong_weights:
         if not Path(cfg.ct2rep_strong_weights).exists():
             raise FileNotFoundError(f"ct2rep_strong_weights not found: {cfg.ct2rep_strong_weights!r}")
         tokenizers["ct2rep_strong"] = FixedGridTokenizer(max_depth=6)
+        # Real baseline ablation: same learned CT2RepStrong model, but no citations/refusal.
+        # This keeps the generator "real" while removing proof-carrying behaviors.
+        tokenizers["ct2rep_noproof"] = FixedGridTokenizer(max_depth=6)
 
     results: Dict[str, Dict[str, List[float]]] = {}
     for name in tokenizers.keys():
@@ -376,7 +377,7 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             tokens_eval = tokens
             if name == "provetok_lesionness":
                 gen = pcg_provetok(tokens_eval)
-            elif name == "ct2rep_strong":
+            elif name in {"ct2rep_strong", "ct2rep_noproof"}:
                 if ct2rep_strong is None:
                     raise RuntimeError("ct2rep_strong requested but model is not loaded")
                 gen = _generate_ct2rep_strong(tokens, model=ct2rep_strong, topk=int(cfg.topk_citations))
@@ -385,9 +386,9 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
 
             # protocol ablation example: no-citation variant for fixed_grid
             gen_eval = gen
-            if name == "ct2rep_like":
+            if name == "ct2rep_noproof":
                 gen_eval = apply_no_citation(gen_eval)
-                # Disable refusal for CT2Rep-like baseline (no learning-to-refuse).
+                # Disable refusal for non-proof baseline.
                 gen_eval = Generation(frames=gen_eval.frames, citations=gen_eval.citations, q=gen_eval.q, refusal={k: False for k in range(len(gen_eval.frames))}, text=gen_eval.text)
 
             if refusal_policy is not None:

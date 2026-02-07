@@ -1,5 +1,8 @@
 # Proof Strength Report (Paper-grade) — 2026-02-04
 
+> 2026-02-06 更新（最新口径）：`real` 与 `default` 档当前均为 **C0001–C0006 证明通过**（见 `outputs/oral_audit.json`）。  
+> 下文是 2026-02-04 的阶段性强度报告，若与最新判定冲突，请以 `python scripts/proof_check.py` 与 `outputs/oral_audit.json` 为准。
+
 本文件回答：
 1) **C0001–C0006 当前是怎么“判定 proved/未 proved”的**（判定器/门槛/证据文件）；  
 2) **哪些 proof 属于中等偏弱 / 为什么**；  
@@ -17,10 +20,11 @@
 
 以 `python scripts/proof_check.py` 输出为准（会读取 `outputs/**` 下最新/指定的 artifacts）。
 
-- **C0001–C0006：均已 proved**（以 `scripts/proof_check.py` 的判定为准）
-  - 强度（启发式）：`python scripts/proof_strength.py --format md` 当前显示 **全部 strong**
+- **最新机器判定**：
+  - `default` profile：C0001–C0006 proved；
+  - `real` profile：C0001–C0006 proved（`combined_pass=6/6`, `iou_pass=6/6`, `latency_p95_pass=6/6`, `unsupported_pass=6/6`）。
  - 关键 artifacts：
-    - `outputs/E0138-full/baselines_curve_multiseed.json`（C0001/C0006）
+    - `outputs/E0164-full/baselines_curve_multiseed.json`（C0001/C0006，real 口径）
     - `outputs/E0142-full/baselines_curve_multiseed.json` + `outputs/E0141-full/fig3_results.json`（C0002）
     - `outputs/E0143-full/figX_grounding_proof.json`（C0004；ReXGroundingCT-mini）
     - （更强补充）`outputs/E0156-grounding_proof_100g_saliency_full/figX_grounding_proof.json`（C0004；ReXGroundingCT-100g；用 `outputs/E0155-train_saliency_cnn3d_100g/saliency_cnn3d.pt` 重写 token.score）

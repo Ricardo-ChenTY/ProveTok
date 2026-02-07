@@ -151,8 +151,6 @@ def main() -> None:
         "slice_2p5d": SliceTokenizer2p5D(level=3, band=3),
         "roi_variance": ROIVarianceTokenizer(candidate_level=3),
         "roi_crop": ROICropTokenizer(candidate_level=3, roi_max_depth=6),
-        # Placeholder "strong RRG baseline" without citations (CT2Rep-like contract).
-        "ct2rep_like": FixedGridTokenizer(max_depth=6),
     }
 
     repo_root = Path(__file__).resolve().parents[2]
@@ -187,4 +185,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -1,27 +1,33 @@
 # Proof Audit (2026-02-04)
 
+> 2026-02-06 更新（最新口径）：`python scripts/proof_check.py --profile real` 显示 **C0001–C0006 全部 proved**；`python scripts/oral_audit.py --sync --out outputs/oral_audit.json --strict` 当前为 `ready_for_oral_gate=true`。  
+> 本文主体记录的是 2026-02-04 的阶段性审计，阅读时请以 `outputs/oral_audit.json` 与最新 `scripts/proof_check.py` 输出为准。
+
 本文件按 `docs/plan.md` 的 Claims (C####) 逐条检查：当前 `docs/experiment.md` + `.rd_queue/results/*.json` + `docs/results.md` 中的结果，是否足以 **证明** 每条 Claim 的 proof rule。
 
-结论：截至 2026-02-04，本仓库闭环可跑，且 **C0001–C0006 均已通过** `python scripts/proof_check.py` 的判定。其中：
-- **C0003（counterfactual non-triviality）已可按 plan 的最小 proof rule 证明**（`cite_swap` 显著击穿 unsupported，`no_cite` 显著击穿 grounding；见下文与 `python scripts/proof_check.py`）。
-- **C0003 的 optional stronger check：non-oracle `omega_perm` 现在也可显著击穿 grounding**（见 E0157）。
-- **C0001–C0006 已按当前仓库定义的 proof rule 全部通过**（见下文与 `python scripts/proof_check.py`）。更强版本（更严格 Pareto/latency-matched、跨数据集验证等）仍可在后续迭代补齐。
+结论（以 2026-02-06 最新审计为准）：
+- `real` profile：C0001–C0006 proved；
+- `default` profile：C0001–C0006 proved；
+- oral gate：`ready_for_oral_gate=true`（`gaps=[]`）。
 
 ---
 
 ## C0001 — Pareto dominate in FLOPs/latency-matched
 
-**Status:** Proved (paper-grade)
+**Status:** Proved (real latest)
 
 **Evidence checked**
 - Paper-grade baselines curve (test): `outputs/E0138-full/baselines_curve_multiseed.json`
 - Proof script: `python scripts/proof_check.py` (C0001)
 
 **What is proved**
-- 在 `B={2e6,3e6,4e6,5e6,6e6,7e6}`、`seeds>=5`、`n_bootstrap>=20000` 下，`provetok_lesionness` 相对 `fixed_grid` 的 `combined` 与 `iou_union` 均为 **正向且 one-sided paired bootstrap + Holm 后显著**（6/6 budgets 通过；见 `python scripts/proof_check.py` 的 C0001 明细）。
-- 同一设置下还满足硬 gate：`warm_time_p95_s` 不超过 `fixed_grid` 的 +5%，且 `unsupported` 增幅不超过 +0.05（所有 budgets）。
+- 最新 real 复跑（`outputs/E0164-full/baselines_curve_multiseed.json`）在同一规则下结果为：
+  - `combined_pass=6/6`，`iou_pass=6/6`（均满足需要的 `>=4/6`）；
+  - `latency_p95_pass=6/6`（全部预算满足 `Δp95 <= +5%`）；
+  - `unsupported_pass=6/6`。
+- 因此 C0001 在 real 口径当前为 **proved**。
 
-**Remaining gaps (stronger version)**
+**Optional strengthening (not gate blockers)**
 - 可把 “Pareto dominate” 从当前的（quality + hard-gates）升级为更完整的多目标 Pareto（加入 overclaim/refusal/ECE + cold-start latency 等），并保持同协议对齐。
 
 ---

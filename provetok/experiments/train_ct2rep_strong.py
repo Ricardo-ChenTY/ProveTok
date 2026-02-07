@@ -1,6 +1,6 @@
 """Train a reproducible "strong report generation baseline" (ct2rep_strong) on manifest-driven data.
 
-This is a paper-grade improvement over the placeholder `ct2rep_like`:
+This is a paper-grade improvement over earlier placeholder baselines:
 - Learns query vectors and polarity classification from report-derived frames
 - Emits token citations via learned attention weights
 """

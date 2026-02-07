@@ -1,5 +1,7 @@
 # Proof Failure Analysis & Fix Options (2026-02-04)
 
+> 2026-02-06 更新：最新 `real` 与 `default` 档审计均为 `C0001–C0006` 全通过（`ready_for_oral_gate=true`）；本文保留历史失败复盘，当前判定请以 `outputs/oral_audit.json` 为准。
+
 本文件回答两个问题：
 1) **为什么当前结果还不能“证明” `docs/plan.md` 的结论（Claims）**；  
 2) **每条不能证明的点，可能的解决方案（尽量多）**。
@@ -10,7 +12,7 @@
 
 ## 0) Snapshot（以 2026-02-04 为准）
 
- - 当前核心结论：**C0001–C0006 已可按最小 proof rule 证明**（见 `docs/proof_audit.md` 与 `python scripts/proof_check.py`）。更强版本（强 3D RRG baseline / latency-matched / 更严格 Pareto 定义）仍可继续迭代。
+ - 当前核心结论（2026-02-06 最新）：`default` 与 `real` 档 C0001–C0006 均可证明（见 `outputs/oral_audit.json` 与 `python scripts/proof_check.py --profile real`）。
 - 已新增/重跑（最新）：
   - **E0134 (full)**：non-oracle 尝试（lesionness-scored + attention citations + `pcg_score_bias`）→ `omega_perm` 仍不显著（失败复盘用）
   - **E0135 (full)**：训练 `saliency_cnn3d.pt`（train/val supervision；test 时不使用 GT mask）

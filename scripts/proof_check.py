@@ -110,6 +110,85 @@ def _profile_is_real() -> bool:
     return str(ACTIVE_PROFILE).lower() == "real"
 
 
+def _to_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        try:
+            return int(float(value))
+        except Exception:
+            return int(default)
+
+
+def _read_baselines_curve_meta(path: Path) -> Dict[str, Any]:
+    try:
+        d = _read_json(path)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ok": False,
+            "error": f"{type(exc).__name__}: {exc}",
+            "budgets": [],
+            "seeds": [],
+            "n_bootstrap": 0,
+            "split": "",
+        }
+    meta_cfg = (d.get("meta") or {}).get("config", {}) or {}
+    budgets = d.get("budgets") or []
+    seeds = d.get("seeds") or []
+    return {
+        "ok": True,
+        "budgets": budgets if isinstance(budgets, list) else [],
+        "seeds": seeds if isinstance(seeds, list) else [],
+        "n_bootstrap": _to_int(d.get("n_bootstrap", 0), 0),
+        "split": str(meta_cfg.get("split", "")),
+    }
+
+
+def _is_paper_grade_c0001_curve(path: Path) -> bool:
+    meta = _read_baselines_curve_meta(path)
+    return bool(
+        meta.get("ok")
+        and len(meta.get("budgets") or []) >= 6
+        and len(meta.get("seeds") or []) >= 5
+        and _to_int(meta.get("n_bootstrap", 0), 0) >= 20_000
+        and str(meta.get("split", "")) == "test"
+    )
+
+
+def _select_real_e0164_baselines_curve(*, require_paper_grade: bool) -> Optional[Path]:
+    """Resolve E0164 baselines_curve artifact robustly for real profile.
+
+    Selection policy:
+    1) Prefer `outputs/E0164-full/baselines_curve_multiseed.json`.
+    2) If paper-grade is required and preferred is not paper-grade, scan `E0164*`
+       and pick the newest paper-grade candidate.
+    3) Otherwise fall back to preferred (if exists) or newest candidate.
+    """
+    preferred = ROOT / "outputs" / "E0164-full" / "baselines_curve_multiseed.json"
+    candidates = list((ROOT / "outputs").glob("E0164*/baselines_curve_multiseed.json"))
+    candidates = [p for p in candidates if p.exists()]
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+    if preferred.exists():
+        if not require_paper_grade:
+            return preferred
+        if _is_paper_grade_c0001_curve(preferred):
+            return preferred
+        for p in candidates:
+            if p == preferred:
+                continue
+            if _is_paper_grade_c0001_curve(p):
+                return p
+        return preferred
+
+    if require_paper_grade:
+        for p in candidates:
+            if _is_paper_grade_c0001_curve(p):
+                return p
+
+    return candidates[0] if candidates else None
+
+
 def _resolve_path(path_str: str) -> Path:
     p = Path(str(path_str))
     if p.is_absolute():
@@ -172,14 +251,7 @@ def check_c0001() -> ClaimCheck:
     """Pareto dominate in matched compute with paper-grade latency/trust constraints."""
     base_path = None
     if _profile_is_real():
-        preferred = ROOT / "outputs" / "E0164-full" / "baselines_curve_multiseed.json"
-        if preferred.exists():
-            base_path = preferred
-        else:
-            base_path = _find_latest(
-                patterns=["E0164*/baselines_curve_multiseed.json"],
-                preferred_roots=[ROOT / "outputs"],
-            )
+        base_path = _select_real_e0164_baselines_curve(require_paper_grade=True)
         if base_path is None:
             return ClaimCheck(
                 claim_id="C0001",
@@ -289,6 +361,7 @@ def check_c0001() -> ClaimCheck:
         shared_seeds = [s for s in seeds if str(s) in seed_dirs]
         if not shared_seeds:
             continue
+        used_seeds: List[int] = []
         mats_m = []  # primary
         mats_b = []
         mats_g_m = []  # grounding
@@ -301,7 +374,12 @@ def check_c0001() -> ClaimCheck:
             dpath = Path(str(seed_dirs[str(s)])) / "baselines.json"
             if not dpath.exists():
                 continue
-            d = _read_json(dpath)
+            try:
+                d = _read_json(dpath)
+            except Exception:  # noqa: BLE001
+                # Ignore corrupted per-seed artifacts and continue with remaining seeds.
+                continue
+            used_seeds.append(int(s))
             raw_m = ((d.get("raw") or {}).get(method) or {}).get(metric_primary) or []
             raw_b = ((d.get("raw") or {}).get(baseline) or {}).get(metric_primary) or []
             raw_g_m = ((d.get("raw") or {}).get(method) or {}).get(metric_grounding) or []
@@ -409,7 +487,7 @@ def check_c0001() -> ClaimCheck:
             {
                 "budget": float(b),
                 "n_samples": n,
-                "seeds": shared_seeds,
+                "seeds": used_seeds,
                 "combined": {
                     "metric": metric_primary,
                     "mean_diff": float(res_primary["mean_diff"]),
@@ -456,6 +534,37 @@ def check_c0001() -> ClaimCheck:
             proved=False,
             summary="not proved: could not load per-seed per-budget raw data for baselines curve.",
             details={"baselines": baselines["path"]},
+        )
+
+    # Guard against partially broken artifacts: paper-grade requires all 6 budgets
+    # and >=5 evaluable seeds per budget (not just declared in metadata).
+    if len(rows) < 6:
+        return ClaimCheck(
+            claim_id="C0001",
+            proved=False,
+            summary=f"not proved: need >=6 evaluable budgets for paper-grade C0001 (got {len(rows)}).",
+            details={
+                "baselines": baselines["path"],
+                "declared_budgets": budgets,
+                "evaluable_budgets": [float(r.get("budget", 0.0)) for r in rows],
+            },
+        )
+    bad_seed_rows = [r for r in rows if len(r.get("seeds") or []) < 5]
+    if bad_seed_rows:
+        return ClaimCheck(
+            claim_id="C0001",
+            proved=False,
+            summary=(
+                "not proved: need >=5 evaluable seeds per budget for paper-grade C0001 "
+                f"(failed at {len(bad_seed_rows)}/{len(rows)} budgets)."
+            ),
+            details={
+                "baselines": baselines["path"],
+                "per_budget_seed_counts": [
+                    {"budget": float(r.get("budget", 0.0)), "n_evaluable_seeds": len(r.get("seeds") or [])}
+                    for r in rows
+                ],
+            },
         )
 
     p_holm_primary = _holm_bonferroni(p_values_primary)
@@ -979,16 +1088,7 @@ def check_c0005() -> ClaimCheck:
 def check_c0006() -> ClaimCheck:
     path: Optional[Path] = None
     if _profile_is_real():
-        preferred = ROOT / "outputs" / "E0164-full" / "baselines_curve_multiseed.json"
-        if preferred.exists():
-            path = preferred
-        else:
-            path = _find_latest(
-                patterns=[
-                    "E0164*/baselines_curve_multiseed.json",
-                ],
-                preferred_roots=[ROOT / "outputs"],
-            )
+        path = _select_real_e0164_baselines_curve(require_paper_grade=True)
         if path is None:
             return ClaimCheck(
                 "C0006",
