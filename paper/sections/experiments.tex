@@ -31,3 +31,12 @@ Concretely, we use:
   \item \textbf{Budget families.} For multi-budget claims (e.g., C0001/C0004), we treat budgets as one family and apply Holm correction over the budget sweep.
   \item \textbf{Counterfactual families.} For counterfactual non-triviality (e.g., C0003 and V0003), we treat perturbation variants (e.g., no\_cite, cite\_swap, $\omega$-perm) as one family and apply Holm correction accordingly.
 \end{itemize}
+
+\subsection{External Validity}
+\paragraph{Backbone transfer.}
+To test whether improvements are architecture-specific, we replicate key evaluations under multiple report-generation backbones (e.g., a lightweight generator and an LLM-backed PCG), while keeping the matched-budget protocol and refusal calibration fixed.
+In particular, refusal thresholds and verifier rules are frozen to prevent post-hoc tuning on each backbone.
+
+\paragraph{Dataset shift.}
+We separate primary gold-mask claims (real profile) from cross-dataset stress tests that rely on silver labels (automatic or pseudo masks).
+Under dataset shift, we use counterfactual tests (e.g., $\omega$-permutation) to verify that the citation channel remains non-trivial under guarded statistical protocols.

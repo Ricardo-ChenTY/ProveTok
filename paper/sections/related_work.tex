@@ -13,6 +13,10 @@ In trustworthy generation and RAG, attribution quality and learning to refuse ar
 However, refusal without explicit miss-rate and calibration constraints can reduce apparent error by over-refusing.
 \ProveTok builds on this perspective but targets a different failure mode and setting: 3D CT evidence is spatial and budgeted, and refusal must be audited jointly with grounding, latency, and supportedness under matched budgets.
 
+\paragraph{Budgeted evidence selection.}
+Selecting a limited set of regions under a budget is closely related to classical submodular maximization and weighted coverage objectives, where greedy algorithms provide strong approximation guarantees under cardinality or knapsack constraints~\citep{nemhauser1978analysis,sviridenko2004note}.
+\ProveTok borrows this lens to motivate BET as a budgeted selection problem, while our implementation prioritizes auditability: candidate regions are explicitly mapped to 3D support regions and refinement decisions are tied to verifier traces rather than opaque attention maps.
+
 \paragraph{Positioning.}
 Across these lines of work, the missing piece is a unified, scriptable contract that ties \emph{budget}, \emph{evidence binding}, \emph{verification}, and \emph{refusal calibration} into one end-to-end protocol.
 \ProveTok aims to close that gap.

@@ -13,7 +13,7 @@ import argparse
 import json
 import os
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -77,6 +77,7 @@ class BaselineRunConfig:
     pcg_backend: str = "toy"  # "toy" or "llama2"
     llama2_path: str = "/data/models/Llama-2-7b-chat-hf"
     llama2_quant: str = "fp16"  # "fp16" or "8bit"
+    methods: List[str] = field(default_factory=list)  # Optional subset of tokenizers to run.
     nlg_weight: float = 0.5
     grounding_weight: float = 0.5
     lesionness_weights: str = ""
@@ -85,6 +86,9 @@ class BaselineRunConfig:
     ct2rep_strong_weights: str = ""
     ct2rep_strong_device: str = "cpu"
     compute_text_metrics: bool = True
+
+
+_LLAMA2_PCG_CACHE: Dict[Tuple[str, str, int, int], Llama2PCG] = {}
 
 
 def _grounding_union(gen: Generation, tokens, lesion_masks, volume_shape) -> Dict[str, float]:
@@ -209,17 +213,24 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
 
     pcg_llm = None
     if cfg.pcg_backend == "llama2":
-        pcg_llm = Llama2PCG(
-            Llama2PCGConfig(
-                model_path=cfg.llama2_path,
-                device="cuda",
-                quantization=cfg.llama2_quant,
-                # Keep output cap aligned with compute accounting (b_gen).
-                max_new_tokens=max(128, int(cfg.b_gen)),
-                temperature=0.0,
-                topk_citations=cfg.topk_citations,
+        # Cache LLM instances when running multi-budget sweeps in a single process.
+        # This is required for practicality (loading the model repeatedly is prohibitive).
+        max_new_tokens = max(128, int(cfg.b_gen))
+        key = (str(cfg.llama2_path), str(cfg.llama2_quant), int(max_new_tokens), int(cfg.topk_citations))
+        pcg_llm = _LLAMA2_PCG_CACHE.get(key)
+        if pcg_llm is None:
+            pcg_llm = Llama2PCG(
+                Llama2PCGConfig(
+                    model_path=cfg.llama2_path,
+                    device="cuda",
+                    quantization=cfg.llama2_quant,
+                    # Keep output cap aligned with compute accounting (b_gen).
+                    max_new_tokens=int(max_new_tokens),
+                    temperature=0.0,
+                    topk_citations=int(cfg.topk_citations),
+                )
             )
-        )
+            _LLAMA2_PCG_CACHE[key] = pcg_llm
 
     token_score_fn = None
     if cfg.lesionness_weights:
@@ -254,6 +265,13 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
         # Real baseline ablation: same learned CT2RepStrong model, but no citations/refusal.
         # This keeps the generator "real" while removing proof-carrying behaviors.
         tokenizers["ct2rep_noproof"] = FixedGridTokenizer(max_depth=6)
+
+    if cfg.methods:
+        keep = [str(m) for m in cfg.methods]
+        missing = [m for m in keep if m not in tokenizers]
+        if missing:
+            raise ValueError(f"Unknown --methods: {missing} (available={sorted(tokenizers.keys())})")
+        tokenizers = {m: tokenizers[m] for m in keep}
 
     results: Dict[str, Dict[str, List[float]]] = {}
     for name in tokenizers.keys():
@@ -515,6 +533,7 @@ def main() -> None:
     ap.add_argument("--pcg", type=str, default="toy", choices=["toy", "llama2"], help="PCG backend")
     ap.add_argument("--llama2-path", type=str, default="/data/models/Llama-2-7b-chat-hf")
     ap.add_argument("--llama2-quant", type=str, default="fp16", choices=["fp16", "8bit"])
+    ap.add_argument("--methods", type=str, nargs="+", default=[], help="Optional subset of tokenizers to run (e.g., provetok_lesionness fixed_grid).")
     ap.add_argument("--smoke", action="store_true", help="Quick run")
     ap.add_argument("--n-samples", type=int, default=30)
     ap.add_argument("--seed", type=int, default=42)
@@ -564,10 +583,12 @@ def main() -> None:
             pcg_backend=args.pcg,
             llama2_path=args.llama2_path,
             llama2_quant=args.llama2_quant,
+            methods=list(args.methods) if args.methods else [],
             nlg_weight=float(args.nlg_weight),
             grounding_weight=float(args.grounding_weight),
             lesionness_weights=str(args.lesionness_weights),
             lesionness_device=str(args.lesionness_device),
+            lesionness_score_level_power=float(args.lesionness_score_level_power),
             ct2rep_strong_weights=str(args.ct2rep_strong_weights),
             ct2rep_strong_device=str(args.ct2rep_strong_device),
             compute_text_metrics=(not bool(args.no_text_metrics)),
@@ -592,15 +613,16 @@ def main() -> None:
                 pcg_backend=args.pcg,
                 llama2_path=args.llama2_path,
                 llama2_quant=args.llama2_quant,
+                methods=list(args.methods) if args.methods else [],
                 nlg_weight=float(args.nlg_weight),
+                grounding_weight=float(args.grounding_weight),
                 compute_text_metrics=(not bool(args.no_text_metrics)),
-            grounding_weight=float(args.grounding_weight),
-            lesionness_weights=str(args.lesionness_weights),
-            lesionness_device=str(args.lesionness_device),
-            lesionness_score_level_power=float(args.lesionness_score_level_power),
-            ct2rep_strong_weights=str(args.ct2rep_strong_weights),
-            ct2rep_strong_device=str(args.ct2rep_strong_device),
-        )
+                lesionness_weights=str(args.lesionness_weights),
+                lesionness_device=str(args.lesionness_device),
+                lesionness_score_level_power=float(args.lesionness_score_level_power),
+                ct2rep_strong_weights=str(args.ct2rep_strong_weights),
+                ct2rep_strong_device=str(args.ct2rep_strong_device),
+            )
         return cfg
 
     if len(seed_list) <= 1:

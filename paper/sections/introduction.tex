@@ -27,6 +27,7 @@ We emphasize protocol and auditability over yet another backbone.
 Our contributions are:
 \begin{itemize}
   \item \textbf{Proof-carrying protocol under matched budgets.} We introduce BET and PCG as a unified contract that makes evidence, refusal, and latency jointly auditable under $\Btotal=\Benc+\Bgen$ (Figure~\ref{fig:system}).
+  \item \textbf{BET as budgeted coverage.} We cast evidence tokenization as a budgeted coverage objective and relate it to classical submodular maximization, motivating greedy approximations and auditable allocation proxies.
   \item \textbf{Claim-level proof rules and statistics.} We implement scriptable claim-level tests with multi-budget, multi-seed evaluation using paired bootstrap and Holm correction (Table~\ref{tab:oral-minset}).
   \item \textbf{Decisive evidence via counterfactual and calibration.} We provide counterfactual stress tests showing non-trivial citation effects and calibrated refusal with explicit anti-silencing gates (Figures~\ref{fig:counterfactual} and~\ref{fig:refusal}).
 \end{itemize}

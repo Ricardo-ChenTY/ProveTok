@@ -90,6 +90,7 @@ def main() -> None:
     ap.add_argument("--pcg", type=str, default="toy", choices=["toy", "llama2"], help="PCG backend")
     ap.add_argument("--llama2-path", type=str, default="/data/models/Llama-2-7b-chat-hf")
     ap.add_argument("--llama2-quant", type=str, default="fp16", choices=["fp16", "8bit"])
+    ap.add_argument("--methods", type=str, nargs="+", default=[], help="Optional subset of tokenizers to run (e.g., provetok_lesionness fixed_grid).")
     ap.add_argument("--budgets", type=float, nargs="+", required=True, help="FLOPs total budgets (budget caps).")
     ap.add_argument("--b-gen", type=int, default=128, help="Decoder token budget for matched accounting (toy).")
     ap.add_argument("--n-verify", type=int, default=1, help="Verifier call count for matched accounting (toy).")
@@ -152,6 +153,7 @@ def main() -> None:
                 pcg_backend=str(args.pcg),
                 llama2_path=str(args.llama2_path),
                 llama2_quant=str(args.llama2_quant),
+                methods=list(args.methods) if args.methods else [],
                 nlg_weight=float(args.nlg_weight),
                 grounding_weight=float(args.grounding_weight),
                 lesionness_weights=str(args.lesionness_weights),

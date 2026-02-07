@@ -36,6 +36,21 @@ The selection is driven by either:
 \end{itemize}
 This makes allocation auditable: when refinement happens, the system can point to which verifier failure type triggered it and which cited cells were implicated.
 
+\paragraph{Theoretical view: submodular coverage under a budget.}
+To make BET more than an interface, we cast evidence tokenization as a budgeted set selection problem.
+Let $\mathcal{R}$ be a discrete family of candidate evidence regions (e.g., dyadic cells at multiple resolutions, or ROI proposals), where each region $r\in\mathcal{R}$ deterministically maps to a support region $\Omega_r$.
+Let $\mathcal{U}$ be a set of utility elements (voxels, supervoxels, or finding anchors) with non-negative weights $w(u)$ (e.g., derived from a fixed saliency model or uncertainty map).
+Given a token set $T\subseteq \mathcal{R}$, define a weighted coverage objective:
+\begin{equation}
+  F(T)=\sum_{u\in \mathcal{U}} w(u)\cdot \mathbf{1}\big[\exists r\in T: u\in \Omega_r\big].
+\end{equation}
+More generally, a facility-location-style variant can replace the indicator with a soft coverage strength $a(u,r)\in[0,1]$ via $F(T)=\sum_u w(u)\max_{r\in T} a(u,r)$; both forms are monotone submodular.
+\paragraph{Proposition 1 (Uniform-cost greedy).}
+Under a uniform-cost constraint $|T|\le K$, the classical greedy algorithm that repeatedly adds the region with the largest marginal gain achieves a $(1-1/e)$ approximation to the optimum for monotone submodular $F$~\citep{nemhauser1978analysis}.
+\paragraph{Proposition 2 (Knapsack-style budgets).}
+Under non-uniform token costs and a knapsack constraint, $(1-1/e)$-type approximation algorithms exist for monotone submodular maximization~\citep{sviridenko2004note}.
+Our refinement loop is a practical, auditable greedy variant over a structured candidate family (dyadic splits): each split increases resolution locally and selects the next region using a verifier-driven proxy for marginal value (issue reduction and uncertainty).
+
 \subsection{PCG: Proof-Carrying Generation}
 PCG generates statements under budget $\Bgen$ with a hard contract: every asserted statement must cite evidence tokens.
 We use a structured output space for auditability: the report is emitted as a set of typed \emph{frames} $y_k$ (finding type + slots such as polarity and laterality) together with citations $C_k$ and an accept probability $q_k$.
