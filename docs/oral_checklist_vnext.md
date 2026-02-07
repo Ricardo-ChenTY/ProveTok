@@ -129,6 +129,15 @@
       - 方向一致性：`positive_seeds=9/10`
     - pooled secondary（family-wise Holm across cf keys）：
       - `omega_perm p_holm=0.1122`（未过），`no_cite p_holm=0.0`（通过）
+  - 已执行（2026-02-07，A' omega_perm 功效增强 R2）：
+    - 先做单变量筛参（seed0）：`.rd_queue/results/E0167RA-full.json`、`.rd_queue/results/E0167RB-full.json`、`.rd_queue/results/E0167RC-full.json`、`.rd_queue/results/E0167RD-full.json`；`omega_perm` 未优于 baseline，故锁定 baseline 配置继续扩 seed。
+    - 运行记录（扩 seed）：`.rd_queue/results/E0167S10-full.json` ~ `.rd_queue/results/E0167S19-full.json`（均 `status=passed`；总 seeds=`{0..19}`）。
+    - 汇总产物：`outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json` 与 `omega_perm_power_table.md`
+    - pooled primary（预注册 one-sided）：
+      - `grounding_iou_union_orig_minus_cf::omega_perm`: `mean_diff=+0.002567`, `95% CI=[+0.001302,+0.003780]`, `p_one_sided=0.0001`（通过）
+      - 方向一致性：`positive_seeds=19/20`
+    - pooled secondary（family-wise Holm across cf keys）：
+      - `omega_perm p_holm=0.0006`（通过），`no_cite p_holm=0.0`（通过）
 - 局限（必须口头声明）
   - 该路径是弱标签评测，不等价于 gold voxel mask；只用于“跨集可运行 + 趋势参考”，不能替代主结论。
   - 当前 CT-RATE 域偏移明显，`threshold=0.5` 退化后频繁触发 top-k fallback（mean mask ratio≈0.005）；说明 pseudo-mask 质量受限。
