@@ -49,6 +49,10 @@ logs/
 
 # Data (too large)
 data/
+!scripts/data/
+scripts/data/*
+!scripts/data/build_ct_rate_pseudomask_manifest.py
+!scripts/data/build_ct_rate_tsseg_effusion_manifest.py
 
 # OS
 .DS_Store

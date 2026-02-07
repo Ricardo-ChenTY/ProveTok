@@ -296,6 +296,7 @@ ProveTok: **Proof-Carrying Budgeted Evidence Tokenization for Grounded 3D Report
 - 2026-02-07: 完成 E0165CF full（V0003(C) CT-RATE weak-label counterfactual，58 test 全量，bootstrap=20000，seed=0）；结果文件为 `outputs/E0165-ct_rate-pseudomask-counterfactual-full/figX_counterfactual_20260207_044425/figX_counterfactual.json`：`grounding_iou_union_orig_minus_cf` 中 `omega_perm` 显著（`mean_diff=+0.005398`, `p_holm=0.0308`），`no_cite` 显著（`mean_diff=+0.009464`, `p_holm=0.0`）。
 - 2026-02-07: 完成 E0165CF1/E0165CF2 full（seed=1/2）并验证多 seed 稳定性：`grounding_iou_union_orig_minus_cf` 的 `omega_perm` 在 seed `{0,1,2}` 均显著（Holm 后 `p={0.0308,0.0048,0.0024}`），`no_cite` 在 seed `{0,1,2}` 均显著（Holm 后 `p=0.0`）。
 - 2026-02-07: 复跑 `python scripts/oral_audit.py --sync --out outputs/oral_audit.json --strict`，返回 `ready_for_oral_gate=true` 且 `gaps=[]`（审计时间：`2026-02-07T05:27:15+00:00`）。
+- 2026-02-07: 完成 E0166/E0167（V0003(A')，CT-RATE TS-Seg 外部自动 mask eval-only）full：`E0166`（`outputs/E0166-ct_rate-tsseg-effusion-grounding-full/figX_grounding_proof.json`）在 `iou_union` 上对 `roi_variance` 达到 `6/6` budgets Holm 显著、对 `fixed_grid` 为 `4/6` budgets Holm 显著（`5/6` 为正）；`E0167` 三 seed（`E0167S0/S1/S2`）显示 `no_cite` 在 `grounding_iou_union_orig_minus_cf` 上 `3/3` 显著（`mean_diff=+0.005909`, Holm `p=0.0`），`omega_perm` 方向一致但未显著。该路径仍属 `silver_auto_unverified`，不替代 gold-mask 证据。
 
 ## Appendix A — Paper Outline (verbatim)
 

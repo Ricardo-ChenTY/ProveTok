@@ -109,9 +109,21 @@
       - `no_cite` 在 seed `{0,1,2}` 的 `mean_diff` 固定为 `+0.009464`，Holm 后 `p=0.0`（`3/3` 显著）
       - `cite_swap` 在 seed `{0,1,2}` 均为 `mean_diff=0.0`、`p=1.0`
     - `unsupported`/`overclaim` 在该弱标签设定下保持退化状态（分别接近全 1 / 全 0），不构成可分辨信号。
+  - 已执行（2026-02-07，A' 路径：外部 TS-Seg auto mask，eval-only）：
+    - 构建脚本：`scripts/data/build_ct_rate_tsseg_effusion_manifest.py`；生成 `manifest=/data/provetok_datasets/ct_rate_tsseg_effusion_eval/manifest.jsonl`（`n=38`，`split=test`，`mask_quality=silver_auto_unverified`）。
+    - 运行记录（grounding）：`.rd_queue/results/E0166-full.json`（`status=passed`，`started_at=2026-02-07T05:44:37+00:00`，`ended_at=2026-02-07T05:48:01+00:00`）。
+    - 主结果（grounding）：`outputs/E0166-ct_rate-tsseg-effusion-grounding-full/figX_grounding_proof.json`
+      - `iou_union` 对 `roi_variance`：`mean_diff>0` 且 Holm 显著 `6/6` budgets；
+      - `iou_union` 对 `fixed_grid`：`mean_diff>0` 为 `5/6` budgets、Holm 显著 `4/6` budgets（`4e6` 为负、`5e6` 未过 Holm）。
+    - 运行记录（counterfactual 多 seed）：`.rd_queue/results/E0167S0-full.json`、`.rd_queue/results/E0167S1-full.json`、`.rd_queue/results/E0167S2-full.json`（均 `status=passed`）。
+    - 主结果（counterfactual）：`outputs/E0167-ct_rate-tsseg-effusion-counterfactual-full-seed{0,1,2}/figX_counterfactual_*/figX_counterfactual.json`
+      - `no_cite` 在 seed `{0,1,2}` 均为 `mean_diff=+0.005909`，Holm 后 `p=0.0`（`3/3` 显著）；
+      - `omega_perm` 在 seed `{0,1,2}` 为 `mean_diff={+0.001515,+0.002341,+0.003146}`，Holm 后 `p={1.0,1.0,0.5128}`（方向一致但未显著）；
+      - `cite_swap` 在 seed `{0,1,2}` 均为 `mean_diff=0.0`、`p=1.0`；`unsupported/overclaim` 差值均为 0（无可分辨信号）。
 - 局限（必须口头声明）
   - 该路径是弱标签评测，不等价于 gold voxel mask；只用于“跨集可运行 + 趋势参考”，不能替代主结论。
   - 当前 CT-RATE 域偏移明显，`threshold=0.5` 退化后频繁触发 top-k fallback（mean mask ratio≈0.005）；说明 pseudo-mask 质量受限。
+  - TS-Seg 路径同样不是 gold mask，且来源为自动分割（`silver_auto_unverified`）；它提升了“外部来源独立性”，但仍不能替代人工/官方标注证据。
   - 要把 V0003 升级为强证据，仍建议推进 A/B（真实 mask 或人工标注 eval 子集）。
 - 相关路径
   - manifest schema：`provetok/data/manifest_schema.py`
