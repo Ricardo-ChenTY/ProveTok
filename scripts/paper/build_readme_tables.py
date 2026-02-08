@@ -463,6 +463,87 @@ def build_table5_backbone_transfer(*, v0004_report_json: Path, out_path: Path) -
     out_path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def build_table6_llama2_grounding_diagnosis(*, llama2_curve_json: Path, out_path: Path) -> None:
+    curve = _load_json(llama2_curve_json)
+    budgets = list(curve.get("budgets") or [])
+    methods = list(curve.get("methods") or [])
+    seeds = curve.get("seeds") or []
+    n_samples = int(curve.get("n_samples", 0) or 0)
+    n_boot = int(curve.get("n_bootstrap", 0) or 0)
+    ci = float(curve.get("ci", 0.95) or 0.95)
+
+    def _mean(metric: str, method: str, bidx: int) -> str:
+        metrics = curve.get("metrics") or {}
+        by_metric = metrics.get(metric) or {}
+        rows = by_metric.get(method) or []
+        if not isinstance(rows, list) or bidx >= len(rows):
+            return "-"
+        row = rows[bidx]
+        if not isinstance(row, dict):
+            return "-"
+        return str(row.get("mean", "-"))
+
+    def _mean_i(metric: str, method: str, bidx: int) -> str:
+        v = _mean(metric, method, bidx)
+        if v == "-" or v is None:
+            return "-"
+        try:
+            return str(int(round(float(v))))
+        except Exception:
+            return "-"
+
+    def _mean_f(metric: str, method: str, bidx: int, digits: int = 4) -> str:
+        v = _mean(metric, method, bidx)
+        if v == "-" or v is None:
+            return "-"
+        try:
+            return _format_num(float(v), digits)
+        except Exception:
+            return "-"
+
+    lines: List[str] = []
+    lines.append("# Table 6. Llama2PCG Polarity/Citation Diagnostics (Grounding Semantics)")
+    lines.append("")
+    lines.append(f"- Evidence: `{llama2_curve_json}`")
+    lines.append(f"- Budgets: {', '.join(str(int(b)) for b in budgets)}")
+    lines.append(f"- Seeds: {seeds}")
+    lines.append(f"- N: {n_samples}")
+    lines.append(f"- n_bootstrap(curve CI): {n_boot}, CI: {ci}")
+    lines.append("")
+    lines.append("**Grounding semantics (避免 IoU≈0 被误读为“算法失效”)**")
+    lines.append("- `IoU_pos_only`: 只统计 polarity∈{present,positive} 的 frames 上的 citations（实现：`provetok/eval/metrics_grounding.py::_select_positive_citations`）。")
+    lines.append("- `IoU_all_frames` 仅用于诊断：union 所有 frames 的 citations 后算 IoU。由于 absent/negative statements 没有 lesion mask，对主结论不采用该口径。")
+    lines.append("")
+
+    header = ["Budget"]
+    for m in methods:
+        header += [f"{m}: pos/total", f"{m}: cite_pos/total", f"{m}: IoU_pos", f"{m}: IoU_all"]
+    lines.append("| " + " | ".join(header) + " |")
+    lines.append("|" + "|".join(["---"] * len(header)) + "|")
+
+    for bidx, b in enumerate(budgets):
+        cells: List[str] = [str(int(float(b)))]
+        for m in methods:
+            n_pos = _mean_i("n_frames_pred_pos", m, bidx)
+            n_tot = _mean_i("n_frames_pred_total", m, bidx)
+            c_pos = _mean_i("n_citations_pos", m, bidx)
+            c_tot = _mean_i("n_citations_total", m, bidx)
+            iou_pos = _mean_f("iou", m, bidx, 4)
+            iou_all = _mean_f("iou_all", m, bidx, 4)
+            cells.append(f"{n_pos}/{n_tot}")
+            cells.append(f"{c_pos}/{c_tot}")
+            cells.append(iou_pos)
+            cells.append(iou_all)
+        lines.append("| " + " | ".join(cells) + " |")
+
+    lines.append("")
+    lines.append("Notes: 表中为 mean；CI 详见曲线 JSON。若 `pos/total` 很低，则 `IoU_pos_only≈0` 可能是口径导致的自然结果，需结合 frame-level correctness 与 anti-silencing gates 解读。")
+    lines.append("")
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Build README tables for paper-style summary.")
     ap.add_argument("--audit-json", type=str, default="outputs/oral_audit.json")
@@ -481,6 +562,7 @@ def main() -> int:
     ap.add_argument("--proof-profile", type=str, default="real")
     ap.add_argument("--omega-json", type=str, default="outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json")
     ap.add_argument("--v0004-report-json", type=str, default="outputs/V0004-backbone-transfer/backbone_transfer_report.json")
+    ap.add_argument("--llama2-curve-json", type=str, default="outputs/E0172-backbone-llama2-mini-n57/baselines_curve_multiseed.json")
     ap.add_argument("--out-dir", type=str, default="docs/paper_assets/tables")
     args = ap.parse_args()
 
@@ -492,6 +574,7 @@ def main() -> int:
     t3 = out_dir / "table3_omega_variant_search.md"
     t4 = out_dir / "table4_oral_minset.md"
     t5 = out_dir / "table5_backbone_transfer.md"
+    t6 = out_dir / "table6_llama2_grounding_diagnosis.md"
 
     build_table1_claims(Path(args.audit_json), t1)
     build_table2_v0003(
@@ -521,11 +604,15 @@ def main() -> int:
         v0004_report_json=Path(args.v0004_report_json),
         out_path=t5,
     )
+    build_table6_llama2_grounding_diagnosis(
+        llama2_curve_json=Path(args.llama2_curve_json),
+        out_path=t6,
+    )
 
     manifest = {
         "generated_at_utc": _now_iso(),
         "out_dir": str(out_dir),
-        "tables": [str(t1), str(t2), str(t3), str(t4), str(t5)],
+        "tables": [str(t1), str(t2), str(t3), str(t4), str(t5), str(t6)],
         "sources": {
             "audit_json": str(Path(args.audit_json).resolve()),
             "e0166_json": str(Path(args.e0166_json).resolve()),
@@ -535,6 +622,7 @@ def main() -> int:
             "proof_profile": str(args.proof_profile),
             "omega_json": str(Path(args.omega_json).resolve()),
             "v0004_report_json": str(Path(args.v0004_report_json).resolve()),
+            "llama2_curve_json": str(Path(args.llama2_curve_json).resolve()),
         },
     }
     (out_dir / "table_manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

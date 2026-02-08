@@ -290,6 +290,20 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             "unsupported": [],
             "overclaim": [],
             "warm_time_s": [],
+            # Diagnostics: polarity + citations. These help interpret cases where grounding
+            # metrics are near-zero due to missing positive assertions/citations.
+            "n_frames_gt_total": [],
+            "n_frames_gt_pos": [],
+            "n_frames_pred_total": [],
+            "n_frames_pred_pos": [],
+            "n_frames_pred_absent": [],
+            "n_citations_total": [],
+            "n_citations_pos": [],
+            "n_citations_nonpos": [],
+            "n_frames_with_citations": [],
+            "n_frames_pos_with_citations": [],
+            # Diagnostic grounding: include citations from all frames (not used for primary claims).
+            "iou_all": [],
         }
         if text_metrics_enabled:
             results[name].update(
@@ -354,6 +368,10 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
         gt_critical_present = [
             f for f in gt_frames
             if is_critical_finding(getattr(f, "finding", "")) and str(getattr(f, "polarity", "")) in ("present", "positive")
+        ]
+        gt_pos = [
+            f for f in gt_frames
+            if str(getattr(f, "polarity", "")) in ("present", "positive")
         ]
 
         if pcg_llm is not None:
@@ -453,10 +471,36 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             overlap_lesion = float(g.get("overlap_ratio_lesion", 0.0))
             combined = float(cfg.nlg_weight) * float(frame_f1) + float(cfg.grounding_weight) * float(iou)
 
+            # Polarity / citation diagnostics.
+            pred_pos_idx = [
+                idx for idx, f in enumerate(gen_eval.frames)
+                if str(getattr(f, "polarity", "")) in ("present", "positive")
+            ]
+            pred_abs_idx = [
+                idx for idx, f in enumerate(gen_eval.frames)
+                if str(getattr(f, "polarity", "")) in ("absent", "negative")
+            ]
+            cites = gen_eval.citations or {}
+            n_cite_total = int(sum(len(v or []) for v in cites.values()))
+            n_cite_pos = int(sum(len(cites.get(int(idx), []) or []) for idx in pred_pos_idx))
+            n_cite_nonpos = int(max(0, n_cite_total - n_cite_pos))
+            n_frames_with_cite = int(sum(1 for idx in range(len(gen_eval.frames)) if cites.get(int(idx))))
+            n_frames_pos_with_cite = int(sum(1 for idx in pred_pos_idx if cites.get(int(idx))))
+
+            g_all = compute_generation_grounding(
+                gen_eval,
+                tokens_eval,
+                lesion_masks,
+                volume_shape,
+                positive_only=False,
+            )
+            iou_all = float(g_all.get("iou_union", 0.0))
+
             results[name]["frame_f1"].append(float(frame_f1))
             results[name]["critical_present_f1"].append(float(critical_present_f1))
             results[name]["critical_present_recall"].append(float(critical_present_recall))
             results[name]["iou"].append(float(iou))
+            results[name]["iou_all"].append(float(iou_all))
             results[name]["dice"].append(float(dice))
             results[name]["hit_rate"].append(float(hit))
             results[name]["hit_any_intersection"].append(float(hit_any))
@@ -468,6 +512,16 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             results[name]["unsupported"].append(issue_counts.get("U1_unsupported", 0) / denom)
             results[name]["overclaim"].append(issue_counts.get("O1_overclaim", 0) / denom)
             results[name]["warm_time_s"].append(float(t1 - t0))
+            results[name]["n_frames_gt_total"].append(float(len(gt_frames)))
+            results[name]["n_frames_gt_pos"].append(float(len(gt_pos)))
+            results[name]["n_frames_pred_total"].append(float(len(gen_eval.frames)))
+            results[name]["n_frames_pred_pos"].append(float(len(pred_pos_idx)))
+            results[name]["n_frames_pred_absent"].append(float(len(pred_abs_idx)))
+            results[name]["n_citations_total"].append(float(n_cite_total))
+            results[name]["n_citations_pos"].append(float(n_cite_pos))
+            results[name]["n_citations_nonpos"].append(float(n_cite_nonpos))
+            results[name]["n_frames_with_citations"].append(float(n_frames_with_cite))
+            results[name]["n_frames_pos_with_citations"].append(float(n_frames_pos_with_cite))
 
             if text_metrics_enabled:
                 pred_text = frames_to_report(gen_eval.frames)
