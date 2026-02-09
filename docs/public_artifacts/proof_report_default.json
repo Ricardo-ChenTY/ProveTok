@@ -1,0 +1,808 @@
+{
+  "root": "<REPO_ROOT>",
+  "profile": "default",
+  "checks": [
+    {
+      "claim_id": "C0001",
+      "proved": true,
+      "summary": "proved: provetok_lesionness beats fixed_grid on combined & iou at 6/6 and 6/6 budgets (Holm), with latency/unsupported constraints",
+      "details": {
+        "baselines": "<REPO_ROOT>/outputs/E0138-full/baselines_curve_multiseed.json",
+        "method": "provetok_lesionness",
+        "baseline": "fixed_grid",
+        "rows": [
+          {
+            "budget": 2000000.0,
+            "n_samples": 57,
+            "seeds": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "combined": {
+              "metric": "combined",
+              "mean_diff": 0.0003547386881852734,
+              "ci_low": 0.00010817341279626533,
+              "ci_high": 0.0006448655450345189,
+              "p_value": 0.0013,
+              "p_holm": 0.0078,
+              "passed": true
+            },
+            "iou_union": {
+              "metric": "iou",
+              "mean_diff": 0.0007094773763705475,
+              "ci_low": 0.0002082209600998951,
+              "ci_high": 0.0013060949536160067,
+              "p_value": 0.0015,
+              "p_holm": 0.0075,
+              "passed": true
+            },
+            "latency": {
+              "metric_mean": "warm_time_s",
+              "baseline_mean": 0.005409208587534203,
+              "mean_diff": 8.373860670090245e-05,
+              "ci_low": 1.0807390923187054e-05,
+              "ci_high": 0.00015808384558145083,
+              "p_value": 0.0244,
+              "p95_method": 0.006178328683599829,
+              "p95_baseline": 0.005940836821682751,
+              "p95_delta": 0.0002374918619170779,
+              "p95_tol_ratio": 0.05,
+              "passed_p95": true
+            },
+            "unsupported": {
+              "metric": "unsupported",
+              "mean_diff": 0.005263157894736847,
+              "ci_low": 0.0,
+              "ci_high": 0.012280701754385975,
+              "p_value": 0.0926,
+              "tol_abs": 0.05,
+              "passed": true
+            }
+          },
+          {
+            "budget": 3000000.0,
+            "n_samples": 57,
+            "seeds": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "combined": {
+              "metric": "combined",
+              "mean_diff": 0.00038761385824248156,
+              "ci_low": 0.00010548863811249029,
+              "ci_high": 0.0007368224248392227,
+              "p_value": 0.00165,
+              "p_holm": 0.0078,
+              "passed": true
+            },
+            "iou_union": {
+              "metric": "iou",
+              "mean_diff": 0.0007752277164849631,
+              "ci_low": 0.00021767051242590365,
+              "ci_high": 0.0014823895315975322,
+              "p_value": 0.00125,
+              "p_holm": 0.0075,
+              "passed": true
+            },
+            "latency": {
+              "metric_mean": "warm_time_s",
+              "baseline_mean": 0.01104367405723519,
+              "mean_diff": 1.4091540830569297e-05,
+              "ci_low": -8.580305777988464e-05,
+              "ci_high": 0.00010595163446851064,
+              "p_value": 0.7666,
+              "p95_method": 0.011813334506005047,
+              "p95_baseline": 0.011907177972607312,
+              "p95_delta": -9.384346660226521e-05,
+              "p95_tol_ratio": 0.05,
+              "passed_p95": true
+            },
+            "unsupported": {
+              "metric": "unsupported",
+              "mean_diff": -0.04912280701754386,
+              "ci_low": -0.10175438596491226,
+              "ci_high": -0.010526315789473686,
+              "p_value": 0.0355,
+              "tol_abs": 0.05,
+              "passed": true
+            }
+          },
+          {
+            "budget": 4000000.0,
+            "n_samples": 57,
+            "seeds": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "combined": {
+              "metric": "combined",
+              "mean_diff": 0.00023975937822955887,
+              "ci_low": 4.3477002125354746e-05,
+              "ci_high": 0.0005022530307797762,
+              "p_value": 0.00155,
+              "p_holm": 0.0078,
+              "passed": true
+            },
+            "iou_union": {
+              "metric": "iou",
+              "mean_diff": 0.000479518756459117,
+              "ci_low": 9.352443265618525e-05,
+              "ci_high": 0.0010028631007489863,
+              "p_value": 0.00185,
+              "p_holm": 0.0075,
+              "passed": true
+            },
+            "latency": {
+              "metric_mean": "warm_time_s",
+              "baseline_mean": 0.01746187049960881,
+              "mean_diff": 0.0001756191053509451,
+              "ci_low": 3.266751492526695e-05,
+              "ci_high": 0.0003236513949824465,
+              "p_value": 0.0147,
+              "p95_method": 0.018551336959935726,
+              "p95_baseline": 0.018556389515288173,
+              "p95_delta": -5.052555352446503e-06,
+              "p95_tol_ratio": 0.05,
+              "passed_p95": true
+            },
+            "unsupported": {
+              "metric": "unsupported",
+              "mean_diff": -0.04912280701754386,
+              "ci_low": -0.10175438596491226,
+              "ci_high": -0.010526315789473686,
+              "p_value": 0.0316,
+              "tol_abs": 0.05,
+              "passed": true
+            }
+          },
+          {
+            "budget": 5000000.0,
+            "n_samples": 57,
+            "seeds": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "combined": {
+              "metric": "combined",
+              "mean_diff": 0.00011752103437747213,
+              "ci_low": 9.625709648964075e-06,
+              "ci_high": 0.00030807135323558996,
+              "p_value": 0.00225,
+              "p_holm": 0.0078,
+              "passed": true
+            },
+            "iou_union": {
+              "metric": "iou",
+              "mean_diff": 0.00023504206875494358,
+              "ci_low": 1.865618439684444e-05,
+              "ci_high": 0.0006191330587416352,
+              "p_value": 0.003,
+              "p_holm": 0.009000000000000001,
+              "passed": true
+            },
+            "latency": {
+              "metric_mean": "warm_time_s",
+              "baseline_mean": 0.02470049958659761,
+              "mean_diff": -4.520971703816922e-05,
+              "ci_low": -0.0002056348109781219,
+              "ci_high": 0.00011459929201743743,
+              "p_value": 0.5836,
+              "p95_method": 0.025731347473338245,
+              "p95_baseline": 0.025909800068475305,
+              "p95_delta": -0.00017845259513706024,
+              "p95_tol_ratio": 0.05,
+              "passed_p95": true
+            },
+            "unsupported": {
+              "metric": "unsupported",
+              "mean_diff": -0.03508771929824561,
+              "ci_low": -0.07719298245614035,
+              "ci_high": 0.0,
+              "p_value": 0.0936,
+              "tol_abs": 0.05,
+              "passed": true
+            }
+          },
+          {
+            "budget": 6000000.0,
+            "n_samples": 57,
+            "seeds": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "combined": {
+              "metric": "combined",
+              "mean_diff": 0.0003888763982423803,
+              "ci_low": 7.184773001396725e-06,
+              "ci_high": 0.0009729096158950066,
+              "p_value": 0.0123,
+              "p_holm": 0.0246,
+              "passed": true
+            },
+            "iou_union": {
+              "metric": "iou",
+              "mean_diff": 0.0007777527964847598,
+              "ci_low": 1.143771904392605e-05,
+              "ci_high": 0.0019158423439188028,
+              "p_value": 0.0148,
+              "p_holm": 0.0296,
+              "passed": true
+            },
+            "latency": {
+              "metric_mean": "warm_time_s",
+              "baseline_mean": 0.034395752528175845,
+              "mean_diff": -0.0012972642973947677,
+              "ci_low": -0.0028774172439354284,
+              "ci_high": -6.03174176598128e-05,
+              "p_value": 0.035,
+              "p95_method": 0.03489469672553241,
+              "p95_baseline": 0.038972652764059534,
+              "p95_delta": -0.004077956038527127,
+              "p95_tol_ratio": 0.05,
+              "passed_p95": true
+            },
+            "unsupported": {
+              "metric": "unsupported",
+              "mean_diff": -0.056140350877192984,
+              "ci_low": -0.10877192982456141,
+              "ci_high": -0.010526315789473686,
+              "p_value": 0.0092,
+              "tol_abs": 0.05,
+              "passed": true
+            }
+          },
+          {
+            "budget": 7000000.0,
+            "n_samples": 57,
+            "seeds": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "combined": {
+              "metric": "combined",
+              "mean_diff": 0.00039008916673739856,
+              "ci_low": 7.243377482710996e-06,
+              "ci_high": 0.0009660948184407684,
+              "p_value": 0.0187,
+              "p_holm": 0.0246,
+              "passed": true
+            },
+            "iou_union": {
+              "metric": "iou",
+              "mean_diff": 0.0007801783334747968,
+              "ci_low": 1.8070844153248108e-05,
+              "ci_high": 0.0019399082572866975,
+              "p_value": 0.0159,
+              "p_holm": 0.0296,
+              "passed": true
+            },
+            "latency": {
+              "metric_mean": "warm_time_s",
+              "baseline_mean": 0.04140651545430159,
+              "mean_diff": -9.316742714298447e-05,
+              "ci_low": -0.0009263825976481792,
+              "ci_high": 0.00044680543207122276,
+              "p_value": 0.8836,
+              "p95_method": 0.042642559860832985,
+              "p95_baseline": 0.04238646158017218,
+              "p95_delta": 0.00025609828066080337,
+              "p95_tol_ratio": 0.05,
+              "passed_p95": true
+            },
+            "unsupported": {
+              "metric": "unsupported",
+              "mean_diff": -0.1473684210526316,
+              "ci_low": -0.22807017543859648,
+              "ci_high": -0.0736842105263158,
+              "p_value": 0.0,
+              "tol_abs": 0.05,
+              "passed": true
+            }
+          }
+        ],
+        "rule": {
+          "need_passed_budgets": 4,
+          "latency_p95_tol_ratio": 0.05,
+          "unsupported_tol_abs": 0.05,
+          "p_value_alternative": "greater"
+        }
+      }
+    },
+    {
+      "claim_id": "C0002",
+      "proved": true,
+      "summary": "proved: paper-grade dev→test regret has CI and beats naive policy (real pipeline)",
+      "details": {
+        "path": "<REPO_ROOT>/outputs/E0141-full/fig3_results.json",
+        "profile": "default",
+        "schema": "fig3_results",
+        "dataset_type": "manifest",
+        "dev_split": "val",
+        "test_split": "test",
+        "has_dev_test": true,
+        "has_fits": true,
+        "has_aic_bic": true,
+        "has_regret_rows": true,
+        "paper": {
+          "has_enough_budgets": true,
+          "n_bootstrap": 20000,
+          "mean_normalized_regret_ci_high": 0.0,
+          "naive_always_fixed_grid_ci_low": 0.9996350506059483,
+          "passed": true
+        },
+        "keys": [
+          "config",
+          "dev",
+          "meta",
+          "naive_policies",
+          "regret",
+          "rows",
+          "test"
+        ]
+      }
+    },
+    {
+      "claim_id": "C0003",
+      "proved": true,
+      "summary": "proved (no_cite breaks grounding + cite_swap breaks unsupported)",
+      "details": {
+        "path": "<REPO_ROOT>/outputs/E0113-full/figX_counterfactual_20260203_181139/figX_counterfactual.json",
+        "alpha": 0.05,
+        "passed": {
+          "no_cite_grounding_holm_p_lt_alpha": true,
+          "cite_swap_unsupported_holm_p_lt_alpha": true
+        },
+        "grounding_p_holm": {
+          "omega_perm": 0.528,
+          "cite_swap": 0.678,
+          "evidence_drop": 0.678,
+          "no_cite": 0.0,
+          "token_perm": 0.528
+        },
+        "unsupported_p_holm": {
+          "omega_perm": 1.0,
+          "cite_swap": 0.0,
+          "evidence_drop": 0.0,
+          "no_cite": 0.0,
+          "token_perm": 1.0
+        },
+        "grounding_mean_diff": {
+          "omega_perm": 0.0007808483050612252,
+          "cite_swap": 0.0004573141430728571,
+          "evidence_drop": 0.0004525952702931732,
+          "no_cite": 0.0011812600354629316,
+          "token_perm": 0.0008440037613901684
+        },
+        "unsupported_mean_diff": {
+          "omega_perm": 0.0,
+          "cite_swap": 0.24561403508771926,
+          "evidence_drop": 0.1070175438596491,
+          "no_cite": 0.27543859649122804,
+          "token_perm": 0.0
+        }
+      }
+    },
+    {
+      "claim_id": "C0004",
+      "proved": true,
+      "summary": "proved: provetok_lesionness beats fixed_grid and roi_variance on iou_union (Holm) with >= 4 budgets each",
+      "details": {
+        "path": "<REPO_ROOT>/outputs/E0143-full/figX_grounding_proof.json",
+        "metric": "iou_union",
+        "per_budget": {
+          "fixed_grid": [
+            {
+              "budget": 2000000.0,
+              "baseline": "fixed_grid",
+              "metric": "iou_union",
+              "mean_diff": 0.000872220954800938,
+              "p_value_two_sided": 0.0008,
+              "p_value_one_sided": 0.0004,
+              "p_holm": 0.0024000000000000002,
+              "passed": true
+            },
+            {
+              "budget": 3000000.0,
+              "baseline": "fixed_grid",
+              "metric": "iou_union",
+              "mean_diff": 0.0007752277164849631,
+              "p_value_two_sided": 0.0027,
+              "p_value_one_sided": 0.00135,
+              "p_holm": 0.006750000000000001,
+              "passed": true
+            },
+            {
+              "budget": 4000000.0,
+              "baseline": "fixed_grid",
+              "metric": "iou_union",
+              "mean_diff": 0.000479518756459117,
+              "p_value_two_sided": 0.0048,
+              "p_value_one_sided": 0.0024,
+              "p_holm": 0.0096,
+              "passed": true
+            },
+            {
+              "budget": 5000000.0,
+              "baseline": "fixed_grid",
+              "metric": "iou_union",
+              "mean_diff": 0.00023504206875494358,
+              "p_value_two_sided": 0.0073,
+              "p_value_one_sided": 0.00365,
+              "p_holm": 0.01095,
+              "passed": true
+            },
+            {
+              "budget": 6000000.0,
+              "baseline": "fixed_grid",
+              "metric": "iou_union",
+              "mean_diff": 0.0007777527964847598,
+              "p_value_two_sided": 0.0284,
+              "p_value_one_sided": 0.0142,
+              "p_holm": 0.0284,
+              "passed": true
+            },
+            {
+              "budget": 7000000.0,
+              "baseline": "fixed_grid",
+              "metric": "iou_union",
+              "mean_diff": 0.0007801783334747968,
+              "p_value_two_sided": 0.0383,
+              "p_value_one_sided": 0.01915,
+              "p_holm": 0.0284,
+              "passed": true
+            }
+          ],
+          "roi_variance": [
+            {
+              "budget": 2000000.0,
+              "baseline": "roi_variance",
+              "metric": "iou_union",
+              "mean_diff": 0.00121186800619719,
+              "p_value_two_sided": 0.0,
+              "p_value_one_sided": 0.0,
+              "p_holm": 0.0,
+              "passed": true
+            },
+            {
+              "budget": 3000000.0,
+              "baseline": "roi_variance",
+              "metric": "iou_union",
+              "mean_diff": 0.0009121489472323657,
+              "p_value_two_sided": 0.0,
+              "p_value_one_sided": 0.0,
+              "p_holm": 0.0,
+              "passed": true
+            },
+            {
+              "budget": 4000000.0,
+              "baseline": "roi_variance",
+              "metric": "iou_union",
+              "mean_diff": 0.0005879528207171992,
+              "p_value_two_sided": 0.0,
+              "p_value_one_sided": 0.0,
+              "p_holm": 0.0,
+              "passed": true
+            },
+            {
+              "budget": 5000000.0,
+              "baseline": "roi_variance",
+              "metric": "iou_union",
+              "mean_diff": 0.0002522483640779794,
+              "p_value_two_sided": 0.0,
+              "p_value_one_sided": 0.0,
+              "p_holm": 0.0,
+              "passed": true
+            },
+            {
+              "budget": 6000000.0,
+              "baseline": "roi_variance",
+              "metric": "iou_union",
+              "mean_diff": 0.0007960694896787051,
+              "p_value_two_sided": 0.001,
+              "p_value_one_sided": 0.0005,
+              "p_holm": 0.001,
+              "passed": true
+            },
+            {
+              "budget": 7000000.0,
+              "baseline": "roi_variance",
+              "metric": "iou_union",
+              "mean_diff": 0.0008051664393940578,
+              "p_value_two_sided": 0.0043,
+              "p_value_one_sided": 0.00215,
+              "p_holm": 0.00215,
+              "passed": true
+            }
+          ]
+        },
+        "rule": {
+          "need_passed_budgets": 4,
+          "required_baselines": [
+            "fixed_grid",
+            "roi_variance"
+          ],
+          "n_bootstrap": 20000,
+          "p_value_alternative": "greater",
+          "holm_scope": "budgets (per baseline, per metric)"
+        }
+      }
+    },
+    {
+      "claim_id": "C0005",
+      "proved": true,
+      "summary": "proved: tau_refuse=0.002 meets miss/ECE/refusal constraints and reduces unsupported at 6/6 budgets",
+      "details": {
+        "path": "<REPO_ROOT>/outputs/E0144-full/figX_refusal_calibration.json",
+        "best_tau": 0.002,
+        "max_critical_miss_rate": 0.05,
+        "max_refusal_ece": 0.15,
+        "max_refusal_rate": 0.2,
+        "per_budget": [
+          {
+            "budget": 2000000.0,
+            "unsupported_no_refusal": 1.013,
+            "unsupported_calibrated": 0.911,
+            "unsupported_delta": -0.10199999999999987,
+            "critical_miss_rate": 0.0,
+            "refusal_ece": 0.0018303662778800895,
+            "refusal_rate": 0.1,
+            "delta_max": 0.05,
+            "passed_miss": true,
+            "passed_ece": true,
+            "passed_refusal_rate": true,
+            "passed_unsupported": true
+          },
+          {
+            "budget": 3000000.0,
+            "unsupported_no_refusal": 1.0485,
+            "unsupported_calibrated": 0.938,
+            "unsupported_delta": -0.11050000000000004,
+            "critical_miss_rate": 0.0,
+            "refusal_ece": 0.0018027419684878247,
+            "refusal_rate": 0.1,
+            "delta_max": 0.05,
+            "passed_miss": true,
+            "passed_ece": true,
+            "passed_refusal_rate": true,
+            "passed_unsupported": true
+          },
+          {
+            "budget": 4000000.0,
+            "unsupported_no_refusal": 1.0555,
+            "unsupported_calibrated": 0.943,
+            "unsupported_delta": -0.11250000000000016,
+            "critical_miss_rate": 0.0,
+            "refusal_ece": 0.0017976263556374052,
+            "refusal_rate": 0.1,
+            "delta_max": 0.05,
+            "passed_miss": true,
+            "passed_ece": true,
+            "passed_refusal_rate": true,
+            "passed_unsupported": true
+          },
+          {
+            "budget": 5000000.0,
+            "unsupported_no_refusal": 1.0585,
+            "unsupported_calibrated": 0.945,
+            "unsupported_delta": -0.11350000000000005,
+            "critical_miss_rate": 0.0,
+            "refusal_ece": 0.0017955801104972376,
+            "refusal_rate": 0.1,
+            "delta_max": 0.05,
+            "passed_miss": true,
+            "passed_ece": true,
+            "passed_refusal_rate": true,
+            "passed_unsupported": true
+          },
+          {
+            "budget": 6000000.0,
+            "unsupported_no_refusal": 1.0585,
+            "unsupported_calibrated": 0.945,
+            "unsupported_delta": -0.11350000000000005,
+            "critical_miss_rate": 0.0,
+            "refusal_ece": 0.0017955801104972376,
+            "refusal_rate": 0.1,
+            "delta_max": 0.05,
+            "passed_miss": true,
+            "passed_ece": true,
+            "passed_refusal_rate": true,
+            "passed_unsupported": true
+          },
+          {
+            "budget": 7000000.0,
+            "unsupported_no_refusal": 1.0585,
+            "unsupported_calibrated": 0.945,
+            "unsupported_delta": -0.11350000000000005,
+            "critical_miss_rate": 0.0,
+            "refusal_ece": 0.0017955801104972376,
+            "refusal_rate": 0.1,
+            "delta_max": 0.05,
+            "passed_miss": true,
+            "passed_ece": true,
+            "passed_refusal_rate": true,
+            "passed_unsupported": true
+          }
+        ],
+        "rule": {
+          "need_passed_budgets": 4
+        }
+      }
+    },
+    {
+      "claim_id": "C0006",
+      "proved": true,
+      "summary": "proved: baseline suite present with cost accounting + reproducible strong baseline",
+      "details": {
+        "path": "<REPO_ROOT>/outputs/E0138-full/baselines_curve_multiseed.json",
+        "profile": "default",
+        "methods": [
+          "ct2rep_like",
+          "ct2rep_strong",
+          "fixed_grid",
+          "provetok_lesionness",
+          "provetok_no_refine",
+          "roi_crop",
+          "roi_variance",
+          "slice_2d",
+          "slice_2p5d"
+        ],
+        "costs_json": "./outputs/compute_costs.json",
+        "has_budget_accounting": true,
+        "ct2rep_strong": {
+          "weights": "./outputs/E0140-full/ct2rep_strong_locked.pt",
+          "weights_exists": true,
+          "frame_f1_last_budget_mean": 0.7719298245614035,
+          "min_frame_f1": 0.05,
+          "passed": true
+        }
+      }
+    },
+    {
+      "claim_id": "C0007",
+      "proved": true,
+      "summary": "proved: bet_alg is near-oracle across budgets",
+      "details": {
+        "path": "<REPO_ROOT>/outputs/E0180-full/figX_bet_near_oracle_gap.json",
+        "profile": "default",
+        "ours": "bet_alg",
+        "gap_threshold": 0.15,
+        "pass_count": 6,
+        "required_pass_count": 5,
+        "rows": [
+          {
+            "budget": 2000000.0,
+            "ours_mean": 0.07076194769883959,
+            "oracle_mean": 0.07076375576802223,
+            "gap_ratio": {
+              "mean": 1.986623946043003e-05,
+              "ci_low": 0.0,
+              "ci_high": 5.959871838129009e-05
+            },
+            "passed": true
+          },
+          {
+            "budget": 3000000.0,
+            "ours_mean": 0.0703315099519041,
+            "oracle_mean": 0.07039433370807517,
+            "gap_ratio": {
+              "mean": 0.000674737113179985,
+              "ci_low": 1.6881644567992513e-05,
+              "ci_high": 0.001830639764380408
+            },
+            "passed": true
+          },
+          {
+            "budget": 4000000.0,
+            "ours_mean": 0.07029776442296155,
+            "oracle_mean": 0.0703147894337778,
+            "gap_ratio": {
+              "mean": 0.005195139154387351,
+              "ci_low": 0.0,
+              "ci_high": 0.015444175723568258
+            },
+            "passed": true
+          },
+          {
+            "budget": 5000000.0,
+            "ours_mean": 0.0702123200668682,
+            "oracle_mean": 0.07024534124971712,
+            "gap_ratio": {
+              "mean": 0.012529768374053014,
+              "ci_low": 0.0,
+              "ci_high": 0.03748878673164597
+            },
+            "passed": true
+          },
+          {
+            "budget": 6000000.0,
+            "ours_mean": 0.07020304007839444,
+            "oracle_mean": 0.07021196504286194,
+            "gap_ratio": {
+              "mean": 0.002235884135135005,
+              "ci_low": 0.0,
+              "ci_high": 0.006619995982407496
+            },
+            "passed": true
+          },
+          {
+            "budget": 7000000.0,
+            "ours_mean": 0.07021388350414588,
+            "oracle_mean": 0.07021388350414588,
+            "gap_ratio": {
+              "mean": 0.0,
+              "ci_low": 0.0,
+              "ci_high": 0.0
+            },
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "claim_id": "C0008",
+      "proved": true,
+      "summary": "proved: contract ablation passes (full > free_form)",
+      "details": {
+        "path": "<REPO_ROOT>/outputs/E0183-full/figX_llama2_contract_ablation.json",
+        "profile": "default",
+        "budgets": [
+          2000000.0,
+          3000000.0,
+          4000000.0,
+          5000000.0,
+          6000000.0,
+          7000000.0
+        ],
+        "methods": [
+          "provetok_lesionness"
+        ],
+        "modes": [
+          "free_form",
+          "schema_only",
+          "schema_citations",
+          "full"
+        ],
+        "metric_pass_counts": {
+          "combined": 6,
+          "iou": 6
+        },
+        "pass_rule": {
+          "metric": [
+            "combined",
+            "iou"
+          ],
+          "alternatives": {
+            "combined": "greater",
+            "iou": "greater",
+            "unsupported": "less"
+          },
+          "p_holm_threshold": 0.05,
+          "min_pass_budgets": 4,
+          "min_pass_budgets_by_metric": {
+            "iou": 6
+          },
+          "required_budgets": 6,
+          "iou_noninferior_ci_low": 0.0
+        }
+      }
+    }
+  ]
+}

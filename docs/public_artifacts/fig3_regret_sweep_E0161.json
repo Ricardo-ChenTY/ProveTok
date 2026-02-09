@@ -1,0 +1,395 @@
+{
+  "meta": {
+    "timestamp_utc": "2026-02-06T10:27:48.440552+00:00",
+    "code_commit": "214bca35936ff7fbd7374390835ca1011bef5dca",
+    "rule_set_version": "taxonomy_v1.0_ruleset_v1",
+    "schema_version": "slot_vocab_v1.0",
+    "taxonomy_version": "taxonomy_v1.0",
+    "data_revision": "multi_curve",
+    "split_manifest_path": "",
+    "seed": 0,
+    "config": {
+      "dev_curves": {
+        "bg128_nv1_topk1": "outputs/E0161-dev-bg128_nv1_topk1/baselines_curve_multiseed.json"
+      },
+      "test_curves": {
+        "bg128_nv1_topk1": "outputs/E0161-test-bg128_nv1_topk1/baselines_curve_multiseed.json"
+      },
+      "tags": [
+        "bg128_nv1_topk1"
+      ],
+      "metric": "hit_lesion_coverage",
+      "criterion": "bic",
+      "budgets": [
+        2000000.0,
+        3000000.0,
+        4000000.0,
+        5000000.0,
+        6000000.0,
+        7000000.0
+      ],
+      "num_candidates": 8,
+      "n_bootstrap": 20000,
+      "ci": 0.95
+    },
+    "hardware": {
+      "platform": "Linux-6.12.0-124.21.1.el10_1.x86_64-x86_64-with-glibc2.39",
+      "python": "3.13.2",
+      "torch": "2.6.0+cu124",
+      "cuda_available": true,
+      "cuda_device_index": 0,
+      "cuda_device_name": "NVIDIA RTX A6000",
+      "cuda_sm": "8.6",
+      "cuda_total_memory_gb": 47.4
+    }
+  },
+  "config": {
+    "dev_curves": {
+      "bg128_nv1_topk1": "outputs/E0161-dev-bg128_nv1_topk1/baselines_curve_multiseed.json"
+    },
+    "test_curves": {
+      "bg128_nv1_topk1": "outputs/E0161-test-bg128_nv1_topk1/baselines_curve_multiseed.json"
+    },
+    "tags": [
+      "bg128_nv1_topk1"
+    ],
+    "metric": "hit_lesion_coverage",
+    "criterion": "bic",
+    "budgets": [
+      2000000.0,
+      3000000.0,
+      4000000.0,
+      5000000.0,
+      6000000.0,
+      7000000.0
+    ],
+    "num_candidates": 8,
+    "n_bootstrap": 20000,
+    "ci": 0.95
+  },
+  "budgets": [
+    2000000.0,
+    3000000.0,
+    4000000.0,
+    5000000.0,
+    6000000.0,
+    7000000.0
+  ],
+  "candidates": [
+    "bg128_nv1_topk1::ct2rep_like",
+    "bg128_nv1_topk1::fixed_grid",
+    "bg128_nv1_topk1::provetok_lesionness",
+    "bg128_nv1_topk1::provetok_no_refine",
+    "bg128_nv1_topk1::roi_crop",
+    "bg128_nv1_topk1::roi_variance",
+    "bg128_nv1_topk1::slice_2d",
+    "bg128_nv1_topk1::slice_2p5d"
+  ],
+  "dev": {
+    "fits": {
+      "bg128_nv1_topk1::ct2rep_like": {
+        "tag": "bg128_nv1_topk1",
+        "method": "ct2rep_like",
+        "model_type": "power_law",
+        "params": {
+          "P_inf": 7.862479642248667e-11,
+          "a": 0.08370096990676563,
+          "b_0": 31.393870881183418,
+          "alpha": 1.1781621343100606
+        },
+        "r_squared": 0.0,
+        "aic": -217.49322834153034,
+        "bic": -218.32619046461812,
+        "residual_std": 8.316179784524324e-10,
+        "reason": "Selected by BIC (-218.33)"
+      },
+      "bg128_nv1_topk1::fixed_grid": {
+        "tag": "bg128_nv1_topk1",
+        "method": "fixed_grid",
+        "model_type": "power_law",
+        "params": {
+          "P_inf": 0.012121211956694822,
+          "a": 3.251205591268978,
+          "b_0": 0.89051013210726,
+          "alpha": 1.906717064644202
+        },
+        "r_squared": -6.056488643935154e-11,
+        "aic": -26.587455813382903,
+        "bic": -27.420417936470685,
+        "residual_std": 0.013551927136772748,
+        "reason": "Selected by BIC (-27.42)"
+      },
+      "bg128_nv1_topk1::provetok_lesionness": {
+        "tag": "bg128_nv1_topk1",
+        "method": "provetok_lesionness",
+        "model_type": "power_law",
+        "params": {
+          "P_inf": 0.19090908687489194,
+          "a": 0.04341423365938409,
+          "b_0": 2.35855033821442,
+          "alpha": 1.2090363022258432
+        },
+        "r_squared": -1.2957275252745148e-09,
+        "aic": 5.456493436253441,
+        "bic": 4.623531313165661,
+        "residual_std": 0.19575382315117584,
+        "reason": "Selected by BIC (4.62)"
+      },
+      "bg128_nv1_topk1::provetok_no_refine": {
+        "tag": "bg128_nv1_topk1",
+        "method": "provetok_no_refine",
+        "model_type": "power_law",
+        "params": {
+          "P_inf": 7.862479642248667e-11,
+          "a": 0.08370096990676563,
+          "b_0": 31.393870881183418,
+          "alpha": 1.1781621343100606
+        },
+        "r_squared": 0.0,
+        "aic": -217.49322834153034,
+        "bic": -218.32619046461812,
+        "residual_std": 8.316179784524324e-10,
+        "reason": "Selected by BIC (-218.33)"
+      },
+      "bg128_nv1_topk1::roi_crop": {
+        "tag": "bg128_nv1_topk1",
+        "method": "roi_crop",
+        "model_type": "power_law",
+        "params": {
+          "P_inf": 7.862479642248667e-11,
+          "a": 0.08370096990676563,
+          "b_0": 31.393870881183418,
+          "alpha": 1.1781621343100606
+        },
+        "r_squared": 0.0,
+        "aic": -217.49322834153034,
+        "bic": -218.32619046461812,
+        "residual_std": 8.316179784524324e-10,
+        "reason": "Selected by BIC (-218.33)"
+      },
+      "bg128_nv1_topk1::roi_variance": {
+        "tag": "bg128_nv1_topk1",
+        "method": "roi_variance",
+        "model_type": "power_law",
+        "params": {
+          "P_inf": 7.862479642248667e-11,
+          "a": 0.08370096990676563,
+          "b_0": 31.393870881183418,
+          "alpha": 1.1781621343100606
+        },
+        "r_squared": 0.0,
+        "aic": -217.49322834153034,
+        "bic": -218.32619046461812,
+        "residual_std": 8.316179784524324e-10,
+        "reason": "Selected by BIC (-218.33)"
+      },
+      "bg128_nv1_topk1::slice_2d": {
+        "tag": "bg128_nv1_topk1",
+        "method": "slice_2d",
+        "model_type": "power_law",
+        "params": {
+          "P_inf": 0.0040404037968128125,
+          "a": 0.19938182030420767,
+          "b_0": 8.206934005619976,
+          "alpha": 1.2884443583393401
+        },
+        "r_squared": -1.7851694589232636e-07,
+        "aic": -45.26854659790697,
+        "bic": -46.10150872099475,
+        "residual_std": 0.0028569973507142545,
+        "reason": "Selected by BIC (-46.10)"
+      },
+      "bg128_nv1_topk1::slice_2p5d": {
+        "tag": "bg128_nv1_topk1",
+        "method": "slice_2p5d",
+        "model_type": "power_law",
+        "params": {
+          "P_inf": 0.004040404892847541,
+          "a": 1.9141258173880304,
+          "b_0": 1.166181478800596,
+          "alpha": 1.3816416904747304
+        },
+        "r_squared": -5.793899116035561e-08,
+        "aic": -35.04005876794406,
+        "bic": -35.87302089103184,
+        "residual_std": 0.006700252295830953,
+        "reason": "Selected by BIC (-35.87)"
+      }
+    }
+  },
+  "test": {
+    "rows": [
+      {
+        "budget": 2000000.0,
+        "oracle_candidate": "bg128_nv1_topk1::provetok_lesionness",
+        "oracle_metric": 0.27,
+        "predicted_candidate": "bg128_nv1_topk1::provetok_lesionness",
+        "predicted_metric_dev_fit": 0.19090908582907057,
+        "achieved_metric_test": 0.27,
+        "regret": 0.0,
+        "normalized_regret": 0.0
+      },
+      {
+        "budget": 3000000.0,
+        "oracle_candidate": "bg128_nv1_topk1::provetok_lesionness",
+        "oracle_metric": 0.46,
+        "predicted_candidate": "bg128_nv1_topk1::provetok_lesionness",
+        "predicted_metric_dev_fit": 0.1909090862343361,
+        "achieved_metric_test": 0.46,
+        "regret": 0.0,
+        "normalized_regret": 0.0
+      },
+      {
+        "budget": 4000000.0,
+        "oracle_candidate": "bg128_nv1_topk1::provetok_lesionness",
+        "oracle_metric": 0.16,
+        "predicted_candidate": "bg128_nv1_topk1::provetok_lesionness",
+        "predicted_metric_dev_fit": 0.19090908642251378,
+        "achieved_metric_test": 0.16,
+        "regret": 0.0,
+        "normalized_regret": 0.0
+      },
+      {
+        "budget": 5000000.0,
+        "oracle_candidate": "bg128_nv1_topk1::provetok_lesionness",
+        "oracle_metric": 0.17,
+        "predicted_candidate": "bg128_nv1_topk1::provetok_lesionness",
+        "predicted_metric_dev_fit": 0.19090908652948269,
+        "achieved_metric_test": 0.17,
+        "regret": 0.0,
+        "normalized_regret": 0.0
+      },
+      {
+        "budget": 6000000.0,
+        "oracle_candidate": "bg128_nv1_topk1::ct2rep_like",
+        "oracle_metric": 0.0,
+        "predicted_candidate": "bg128_nv1_topk1::provetok_lesionness",
+        "predicted_metric_dev_fit": 0.1909090865978146,
+        "achieved_metric_test": 0.0,
+        "regret": 0.0,
+        "normalized_regret": 0.0
+      },
+      {
+        "budget": 7000000.0,
+        "oracle_candidate": "bg128_nv1_topk1::ct2rep_like",
+        "oracle_metric": 0.0,
+        "predicted_candidate": "bg128_nv1_topk1::provetok_lesionness",
+        "predicted_metric_dev_fit": 0.1909090866449279,
+        "achieved_metric_test": 0.0,
+        "regret": 0.0,
+        "normalized_regret": 0.0
+      }
+    ],
+    "predicted_by_budget": {
+      "2000000.0": "bg128_nv1_topk1::provetok_lesionness",
+      "3000000.0": "bg128_nv1_topk1::provetok_lesionness",
+      "4000000.0": "bg128_nv1_topk1::provetok_lesionness",
+      "5000000.0": "bg128_nv1_topk1::provetok_lesionness",
+      "6000000.0": "bg128_nv1_topk1::provetok_lesionness",
+      "7000000.0": "bg128_nv1_topk1::provetok_lesionness"
+    },
+    "oracle_by_budget": {
+      "2000000.0": "bg128_nv1_topk1::provetok_lesionness",
+      "3000000.0": "bg128_nv1_topk1::provetok_lesionness",
+      "4000000.0": "bg128_nv1_topk1::provetok_lesionness",
+      "5000000.0": "bg128_nv1_topk1::provetok_lesionness",
+      "6000000.0": "bg128_nv1_topk1::ct2rep_like",
+      "7000000.0": "bg128_nv1_topk1::ct2rep_like"
+    }
+  },
+  "regret": {
+    "mean_regret": 0.0,
+    "mean_normalized_regret": 0.0,
+    "per_budget": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "per_budget_normalized": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "is_nontrivial_case": true,
+    "bootstrap": {
+      "n_bootstrap": 20000,
+      "ci": 0.95,
+      "seed": 0,
+      "mean_normalized_regret_ci_low": 0.0,
+      "mean_normalized_regret_ci_high": 0.0,
+      "naive_policies": {
+        "always_fixed_grid": {
+          "mean_normalized_regret_ci_low": 0.48229526109960896,
+          "mean_normalized_regret_ci_high": 0.6208513053147486
+        },
+        "best_dev_at_max_budget": {
+          "mean_normalized_regret_ci_low": 0.0,
+          "mean_normalized_regret_ci_high": 0.0
+        }
+      },
+      "policies": {
+        "learned": {
+          "mean": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0
+        },
+        "always_fixed_grid": {
+          "mean": 0.5588728654623988,
+          "ci_low": 0.48229526109960896,
+          "ci_high": 0.6208513053147486
+        },
+        "best_dev_at_max_budget": {
+          "mean": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0
+        }
+      },
+      "naive_point": {
+        "always_fixed_grid": {
+          "mean_regret": 0.1466666666666667,
+          "mean_normalized_regret": 0.5602029459126646
+        },
+        "best_dev_at_max_budget": {
+          "mean_regret": 0.0,
+          "mean_normalized_regret": 0.0
+        }
+      }
+    }
+  },
+  "naive_policies": {
+    "definitions": {
+      "always_fixed_grid": {
+        "2000000.0": "bg128_nv1_topk1::fixed_grid",
+        "3000000.0": "bg128_nv1_topk1::fixed_grid",
+        "4000000.0": "bg128_nv1_topk1::fixed_grid",
+        "5000000.0": "bg128_nv1_topk1::fixed_grid",
+        "6000000.0": "bg128_nv1_topk1::fixed_grid",
+        "7000000.0": "bg128_nv1_topk1::fixed_grid"
+      },
+      "best_dev_at_max_budget": {
+        "2000000.0": "bg128_nv1_topk1::provetok_lesionness",
+        "3000000.0": "bg128_nv1_topk1::provetok_lesionness",
+        "4000000.0": "bg128_nv1_topk1::provetok_lesionness",
+        "5000000.0": "bg128_nv1_topk1::provetok_lesionness",
+        "6000000.0": "bg128_nv1_topk1::provetok_lesionness",
+        "7000000.0": "bg128_nv1_topk1::provetok_lesionness"
+      }
+    },
+    "point_estimates": {
+      "always_fixed_grid": {
+        "mean_regret": 0.1466666666666667,
+        "mean_normalized_regret": 0.5602029459126646
+      },
+      "best_dev_at_max_budget": {
+        "mean_regret": 0.0,
+        "mean_normalized_regret": 0.0
+      }
+    }
+  }
+}

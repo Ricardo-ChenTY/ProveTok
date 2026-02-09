@@ -1,0 +1,979 @@
+{
+  "meta": {
+    "timestamp_utc": "2026-02-04T12:03:15.961081+00:00",
+    "code_commit": "8a0fe9faa5ca75cdc8aed613d7b09969f5bf3344",
+    "rule_set_version": "taxonomy_v1.0_ruleset_v1",
+    "schema_version": "slot_vocab_v1.0",
+    "taxonomy_version": "taxonomy_v1.0",
+    "data_revision": "9fc19526ac411b40348fb7bd047ff77fca36d7afbe915207b1227111358d46c2",
+    "split_manifest_path": "<DATA_ROOT>/rexgroundingct_100g/manifest.jsonl.splits.json",
+    "seed": 42,
+    "config": {
+      "dataset_type": "manifest",
+      "manifest_path": "<DATA_ROOT>/rexgroundingct_100g/manifest.jsonl",
+      "dev_split": "val",
+      "test_split": "test",
+      "n_samples": 200,
+      "n_samples_test": 200,
+      "volume_shape": [
+        64,
+        64,
+        64
+      ],
+      "resize_shape": [
+        64,
+        64,
+        64
+      ],
+      "n_lesions": 3,
+      "budget_tokens": 64,
+      "budget_mode": "flops",
+      "budgets": [
+        2000000.0,
+        3000000.0,
+        4000000.0,
+        5000000.0,
+        6000000.0,
+        7000000.0
+      ],
+      "costs_json": "./outputs/compute_costs.json",
+      "b_gen": 128,
+      "n_verify": 1,
+      "refine_steps": 3,
+      "emb_dim": 32,
+      "topk_citations": 3,
+      "seed": 42,
+      "candidate_taus": null,
+      "max_critical_miss_rate": 0.05,
+      "output_dir": "./outputs/E0144-full/figX_refusal_calibration_20260204_120315"
+    },
+    "hardware": {
+      "platform": "Linux-6.12.0-124.21.1.el10_1.x86_64-x86_64-with-glibc2.39",
+      "python": "3.13.2",
+      "torch": "2.6.0+cu124",
+      "cuda_available": true,
+      "cuda_device_index": 0,
+      "cuda_device_name": "NVIDIA RTX A6000",
+      "cuda_sm": "8.6",
+      "cuda_total_memory_gb": 47.4
+    }
+  },
+  "config": {
+    "dataset_type": "manifest",
+    "manifest_path": "<DATA_ROOT>/rexgroundingct_100g/manifest.jsonl",
+    "dev_split": "val",
+    "test_split": "test",
+    "n_samples": 200,
+    "n_samples_test": 200,
+    "volume_shape": [
+      64,
+      64,
+      64
+    ],
+    "resize_shape": [
+      64,
+      64,
+      64
+    ],
+    "n_lesions": 3,
+    "budget_tokens": 64,
+    "budget_mode": "flops",
+    "budgets": [
+      2000000.0,
+      3000000.0,
+      4000000.0,
+      5000000.0,
+      6000000.0,
+      7000000.0
+    ],
+    "costs_json": "./outputs/compute_costs.json",
+    "b_gen": 128,
+    "n_verify": 1,
+    "refine_steps": 3,
+    "emb_dim": 32,
+    "topk_citations": 3,
+    "seed": 42,
+    "candidate_taus": null,
+    "max_critical_miss_rate": 0.05,
+    "output_dir": "./outputs/E0144-full/figX_refusal_calibration_20260204_120315"
+  },
+  "best_tau": 0.002,
+  "refusal_policy": {
+    "tau_refuse": 0.002,
+    "max_critical_miss_rate": 0.05,
+    "max_refusal_rate": 0.15,
+    "num_bins": 10,
+    "q_calibration": {
+      "bin_boundaries": [
+        0.0,
+        0.1,
+        0.2,
+        0.30000000000000004,
+        0.4,
+        0.5,
+        0.6000000000000001,
+        0.7000000000000001,
+        0.8,
+        0.9,
+        1.0
+      ],
+      "bin_avg_acc": [
+        0.05,
+        0.15000000000000002,
+        0.25,
+        0.0,
+        0.45,
+        0.55,
+        0.6500000000000001,
+        0.75,
+        0.8500000000000001,
+        0.001841620626151013
+      ]
+    }
+  },
+  "q_calibration": {
+    "bin_boundaries": [
+      0.0,
+      0.1,
+      0.2,
+      0.30000000000000004,
+      0.4,
+      0.5,
+      0.6000000000000001,
+      0.7000000000000001,
+      0.8,
+      0.9,
+      1.0
+    ],
+    "bin_avg_acc": [
+      0.05,
+      0.15000000000000002,
+      0.25,
+      0.0,
+      0.45,
+      0.55,
+      0.6500000000000001,
+      0.75,
+      0.8500000000000001,
+      0.001841620626151013
+    ]
+  },
+  "best_metrics_dev": {
+    "unsupported_rate": 0.9181818181818182,
+    "critical_miss_rate": 0.0,
+    "refusal_rate": 0.1,
+    "refusal_ece": 0.0018230183976040328,
+    "reliability_bins": {
+      "0.0-0.1": {
+        "avg_conf": 0.0018230183976040328,
+        "avg_acc": 0.0,
+        "count": 495
+      },
+      "0.1-0.2": {
+        "avg_conf": 0,
+        "avg_acc": 0,
+        "count": 0
+      },
+      "0.2-0.3": {
+        "avg_conf": 0,
+        "avg_acc": 0,
+        "count": 0
+      },
+      "0.3-0.4": {
+        "avg_conf": 0,
+        "avg_acc": 0,
+        "count": 0
+      },
+      "0.4-0.5": {
+        "avg_conf": 0,
+        "avg_acc": 0,
+        "count": 0
+      },
+      "0.5-0.6": {
+        "avg_conf": 0,
+        "avg_acc": 0,
+        "count": 0
+      },
+      "0.6-0.7": {
+        "avg_conf": 0,
+        "avg_acc": 0,
+        "count": 0
+      },
+      "0.7-0.8": {
+        "avg_conf": 0,
+        "avg_acc": 0,
+        "count": 0
+      },
+      "0.8-0.9": {
+        "avg_conf": 0,
+        "avg_acc": 0,
+        "count": 0
+      },
+      "0.9-1.0": {
+        "avg_conf": 0,
+        "avg_acc": 0,
+        "count": 0
+      }
+    },
+    "critical_refusal_count": 0,
+    "total_critical_count": 220
+  },
+  "budget_mode": "flops",
+  "budgets": [
+    2000000.0,
+    3000000.0,
+    4000000.0,
+    5000000.0,
+    6000000.0,
+    7000000.0
+  ],
+  "test": {
+    "split": "test",
+    "rows": [
+      {
+        "budget": 2000000.0,
+        "b_enc": 69,
+        "no_refusal": {
+          "unsupported_rate": 1.013,
+          "critical_miss_rate": 0.0,
+          "refusal_rate": 0.0,
+          "refusal_ece": 0.0013278084714548801,
+          "reliability_bins": {
+            "0.0-0.1": {
+              "avg_conf": 0.0018278084714548801,
+              "avg_acc": 0.0005,
+              "count": 2000
+            },
+            "0.1-0.2": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.2-0.3": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.3-0.4": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.4-0.5": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.5-0.6": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.6-0.7": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.7-0.8": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.8-0.9": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.9-1.0": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            }
+          },
+          "critical_refusal_count": 0,
+          "total_critical_count": 800
+        },
+        "calibrated": {
+          "unsupported_rate": 0.911,
+          "critical_miss_rate": 0.0,
+          "refusal_rate": 0.1,
+          "refusal_ece": 0.0018303662778800895,
+          "reliability_bins": {
+            "0.0-0.1": {
+              "avg_conf": 0.0018303662778800895,
+              "avg_acc": 0.0,
+              "count": 1800
+            },
+            "0.1-0.2": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.2-0.3": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.3-0.4": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.4-0.5": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.5-0.6": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.6-0.7": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.7-0.8": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.8-0.9": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.9-1.0": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            }
+          },
+          "critical_refusal_count": 0,
+          "total_critical_count": 800
+        }
+      },
+      {
+        "budget": 3000000.0,
+        "b_enc": 172,
+        "no_refusal": {
+          "unsupported_rate": 1.0485,
+          "critical_miss_rate": 0.0,
+          "refusal_rate": 0.0,
+          "refusal_ece": 0.00029373848987108617,
+          "reliability_bins": {
+            "0.0-0.1": {
+              "avg_conf": 0.0017937384898710862,
+              "avg_acc": 0.0015,
+              "count": 2000
+            },
+            "0.1-0.2": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.2-0.3": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.3-0.4": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.4-0.5": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.5-0.6": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.6-0.7": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.7-0.8": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.8-0.9": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.9-1.0": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            }
+          },
+          "critical_refusal_count": 0,
+          "total_critical_count": 800
+        },
+        "calibrated": {
+          "unsupported_rate": 0.938,
+          "critical_miss_rate": 0.0,
+          "refusal_rate": 0.1,
+          "refusal_ece": 0.0018027419684878247,
+          "reliability_bins": {
+            "0.0-0.1": {
+              "avg_conf": 0.0018027419684878247,
+              "avg_acc": 0.0,
+              "count": 1800
+            },
+            "0.1-0.2": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.2-0.3": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.3-0.4": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.4-0.5": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.5-0.6": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.6-0.7": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.7-0.8": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.8-0.9": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.9-1.0": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            }
+          },
+          "critical_refusal_count": 0,
+          "total_critical_count": 800
+        }
+      },
+      {
+        "budget": 4000000.0,
+        "b_enc": 275,
+        "no_refusal": {
+          "unsupported_rate": 1.0555,
+          "critical_miss_rate": 0.0,
+          "refusal_rate": 0.0,
+          "refusal_ece": 0.0002872928176795577,
+          "reliability_bins": {
+            "0.0-0.1": {
+              "avg_conf": 0.0017872928176795577,
+              "avg_acc": 0.0015,
+              "count": 2000
+            },
+            "0.1-0.2": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.2-0.3": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.3-0.4": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.4-0.5": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.5-0.6": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.6-0.7": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.7-0.8": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.8-0.9": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.9-1.0": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            }
+          },
+          "critical_refusal_count": 0,
+          "total_critical_count": 800
+        },
+        "calibrated": {
+          "unsupported_rate": 0.943,
+          "critical_miss_rate": 0.0,
+          "refusal_rate": 0.1,
+          "refusal_ece": 0.0017976263556374052,
+          "reliability_bins": {
+            "0.0-0.1": {
+              "avg_conf": 0.0017976263556374052,
+              "avg_acc": 0.0,
+              "count": 1800
+            },
+            "0.1-0.2": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.2-0.3": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.3-0.4": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.4-0.5": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.5-0.6": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.6-0.7": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.7-0.8": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.8-0.9": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.9-1.0": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            }
+          },
+          "critical_refusal_count": 0,
+          "total_critical_count": 800
+        }
+      },
+      {
+        "budget": 5000000.0,
+        "b_enc": 377,
+        "no_refusal": {
+          "unsupported_rate": 1.0585,
+          "critical_miss_rate": 0.0,
+          "refusal_rate": 0.0,
+          "refusal_ece": 0.000284530386740331,
+          "reliability_bins": {
+            "0.0-0.1": {
+              "avg_conf": 0.001784530386740331,
+              "avg_acc": 0.0015,
+              "count": 2000
+            },
+            "0.1-0.2": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.2-0.3": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.3-0.4": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.4-0.5": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.5-0.6": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.6-0.7": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.7-0.8": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.8-0.9": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.9-1.0": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            }
+          },
+          "critical_refusal_count": 0,
+          "total_critical_count": 800
+        },
+        "calibrated": {
+          "unsupported_rate": 0.945,
+          "critical_miss_rate": 0.0,
+          "refusal_rate": 0.1,
+          "refusal_ece": 0.0017955801104972376,
+          "reliability_bins": {
+            "0.0-0.1": {
+              "avg_conf": 0.0017955801104972376,
+              "avg_acc": 0.0,
+              "count": 1800
+            },
+            "0.1-0.2": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.2-0.3": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.3-0.4": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.4-0.5": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.5-0.6": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.6-0.7": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.7-0.8": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.8-0.9": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.9-1.0": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            }
+          },
+          "critical_refusal_count": 0,
+          "total_critical_count": 800
+        }
+      },
+      {
+        "budget": 6000000.0,
+        "b_enc": 480,
+        "no_refusal": {
+          "unsupported_rate": 1.0585,
+          "critical_miss_rate": 0.0,
+          "refusal_rate": 0.0,
+          "refusal_ece": 0.000284530386740331,
+          "reliability_bins": {
+            "0.0-0.1": {
+              "avg_conf": 0.001784530386740331,
+              "avg_acc": 0.0015,
+              "count": 2000
+            },
+            "0.1-0.2": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.2-0.3": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.3-0.4": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.4-0.5": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.5-0.6": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.6-0.7": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.7-0.8": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.8-0.9": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.9-1.0": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            }
+          },
+          "critical_refusal_count": 0,
+          "total_critical_count": 800
+        },
+        "calibrated": {
+          "unsupported_rate": 0.945,
+          "critical_miss_rate": 0.0,
+          "refusal_rate": 0.1,
+          "refusal_ece": 0.0017955801104972376,
+          "reliability_bins": {
+            "0.0-0.1": {
+              "avg_conf": 0.0017955801104972376,
+              "avg_acc": 0.0,
+              "count": 1800
+            },
+            "0.1-0.2": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.2-0.3": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.3-0.4": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.4-0.5": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.5-0.6": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.6-0.7": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.7-0.8": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.8-0.9": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.9-1.0": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            }
+          },
+          "critical_refusal_count": 0,
+          "total_critical_count": 800
+        }
+      },
+      {
+        "budget": 7000000.0,
+        "b_enc": 583,
+        "no_refusal": {
+          "unsupported_rate": 1.0585,
+          "critical_miss_rate": 0.0,
+          "refusal_rate": 0.0,
+          "refusal_ece": 0.000284530386740331,
+          "reliability_bins": {
+            "0.0-0.1": {
+              "avg_conf": 0.001784530386740331,
+              "avg_acc": 0.0015,
+              "count": 2000
+            },
+            "0.1-0.2": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.2-0.3": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.3-0.4": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.4-0.5": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.5-0.6": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.6-0.7": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.7-0.8": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.8-0.9": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.9-1.0": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            }
+          },
+          "critical_refusal_count": 0,
+          "total_critical_count": 800
+        },
+        "calibrated": {
+          "unsupported_rate": 0.945,
+          "critical_miss_rate": 0.0,
+          "refusal_rate": 0.1,
+          "refusal_ece": 0.0017955801104972376,
+          "reliability_bins": {
+            "0.0-0.1": {
+              "avg_conf": 0.0017955801104972376,
+              "avg_acc": 0.0,
+              "count": 1800
+            },
+            "0.1-0.2": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.2-0.3": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.3-0.4": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.4-0.5": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.5-0.6": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.6-0.7": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.7-0.8": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.8-0.9": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            },
+            "0.9-1.0": {
+              "avg_conf": 0,
+              "avg_acc": 0,
+              "count": 0
+            }
+          },
+          "critical_refusal_count": 0,
+          "total_critical_count": 800
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,260 @@
+{
+  "meta": {
+    "timestamp_utc": "2026-02-09T00:55:22.650615+00:00",
+    "code_commit": "0a4130cde8a0c856f966efed7edb47efb255634d",
+    "rule_set_version": "taxonomy_v1.0_ruleset_v1",
+    "schema_version": "slot_vocab_v1.0",
+    "taxonomy_version": "taxonomy_v1.0",
+    "data_revision": "874abadd4598425ee1a10f520b1408d58769696330f34fd22d5f149049ef2a8a",
+    "split_manifest_path": "<DATA_ROOT>/rexgroundingct_mini/manifest.jsonl.splits.json",
+    "seed": 0,
+    "config": {
+      "dataset_type": "manifest",
+      "manifest_path": "<DATA_ROOT>/rexgroundingct_mini/manifest.jsonl",
+      "split": "test",
+      "resize_shape": [
+        64,
+        64,
+        64
+      ],
+      "methods": [
+        "provetok_lesionness"
+      ],
+      "budgets": [
+        5000000.0
+      ],
+      "b_gen": 128,
+      "n_verify": 1,
+      "costs_json": "outputs/compute_costs.json",
+      "selector_ratio": 0.1,
+      "n_samples": 57,
+      "seeds": [
+        0,
+        1,
+        2
+      ],
+      "n_bootstrap": 20000,
+      "ci": 0.95,
+      "llama2_path": "<MODEL_ROOT>/Llama-2-7b-chat-hf",
+      "llama2_quant": "8bit",
+      "contract_modes": [
+        "free_form",
+        "full"
+      ],
+      "citation_source": "score_override",
+      "max_frames": 5,
+      "refusal_policy": "outputs/D1-llama2-refusal-pilot/refusal_policy.json",
+      "text_metrics_enabled": true
+    },
+    "hardware": {
+      "platform": "Linux-6.12.0-124.21.1.el10_1.x86_64-x86_64-with-glibc2.39",
+      "python": "3.13.2",
+      "torch": "2.6.0+cu124",
+      "cuda_available": true,
+      "cuda_device_index": 0,
+      "cuda_device_name": "NVIDIA RTX A6000",
+      "cuda_sm": "8.6",
+      "cuda_total_memory_gb": 47.4
+    }
+  },
+  "modes": [
+    "free_form",
+    "full"
+  ],
+  "budgets": [
+    5000000.0
+  ],
+  "methods": [
+    "provetok_lesionness"
+  ],
+  "metrics": [
+    "combined",
+    "iou",
+    "unsupported",
+    "n_frames_pred_pos",
+    "n_frames_with_citations",
+    "bleu",
+    "rouge1",
+    "rouge2",
+    "rougeL"
+  ],
+  "agg": {
+    "free_form": {
+      "5e+06": {
+        "provetok_lesionness": {
+          "combined": {
+            "mean": 0.17397660818713448,
+            "ci_low": 0.13157894736842105,
+            "ci_high": 0.21637426900584797
+          },
+          "iou": {
+            "mean": 0.0,
+            "ci_low": 0.0,
+            "ci_high": 0.0
+          },
+          "unsupported": {
+            "mean": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0
+          },
+          "n_frames_pred_pos": {
+            "mean": 2.1228070175438596,
+            "ci_low": 2.017543859649123,
+            "ci_high": 2.263157894736842
+          },
+          "n_frames_with_citations": {
+            "mean": 0.0,
+            "ci_low": 0.0,
+            "ci_high": 0.0
+          },
+          "bleu": {
+            "mean": 0.0012805140463767037,
+            "ci_low": 0.0007494027826942111,
+            "ci_high": 0.00184790970432966
+          },
+          "rouge1": {
+            "mean": 0.017062330937608255,
+            "ci_low": 0.012289998107062898,
+            "ci_high": 0.022092343360654087
+          },
+          "rouge2": {
+            "mean": 0.0,
+            "ci_low": 0.0,
+            "ci_high": 0.0
+          },
+          "rougeL": {
+            "mean": 0.017062330937608255,
+            "ci_low": 0.012193956067950236,
+            "ci_high": 0.022092044980162266
+          }
+        }
+      }
+    },
+    "full": {
+      "5e+06": {
+        "provetok_lesionness": {
+          "combined": {
+            "mean": 0.3860050745549107,
+            "ci_low": 0.3333333333333333,
+            "ci_high": 0.4386366535022791
+          },
+          "iou": {
+            "mean": 8.032454841775875e-05,
+            "ci_low": 0.0,
+            "ci_high": 0.0002176750268613469
+          },
+          "unsupported": {
+            "mean": 2.0,
+            "ci_low": 2.0,
+            "ci_high": 2.0
+          },
+          "n_frames_pred_pos": {
+            "mean": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0
+          },
+          "n_frames_with_citations": {
+            "mean": 1.0,
+            "ci_low": 1.0,
+            "ci_high": 1.0
+          },
+          "bleu": {
+            "mean": 0.0008580907795085987,
+            "ci_low": 0.00010265483480545231,
+            "ci_high": 0.0017922328323914964
+          },
+          "rouge1": {
+            "mean": 0.032840446515411625,
+            "ci_low": 0.01941114414639221,
+            "ci_high": 0.04730844304944203
+          },
+          "rouge2": {
+            "mean": 0.0,
+            "ci_low": 0.0,
+            "ci_high": 0.0
+          },
+          "rougeL": {
+            "mean": 0.032840446515411625,
+            "ci_low": 0.019353346952136547,
+            "ci_high": 0.047170240838038065
+          }
+        }
+      }
+    }
+  },
+  "paired_bootstrap": {
+    "full_minus_free_form": {
+      "combined": {
+        "5e+06": {
+          "mean_diff": 0.21202846636777617,
+          "ci_low": 0.1666951796316796,
+          "ci_high": 0.260233918128655,
+          "p_value": 0.0,
+          "p_value_holm": 0.0
+        }
+      },
+      "iou": {
+        "5e+06": {
+          "mean_diff": 8.032454841775875e-05,
+          "ci_low": 0.0,
+          "ci_high": 0.00021767502686134688,
+          "p_value": 0.1292,
+          "p_value_holm": 0.1292
+        }
+      },
+      "bleu": {
+        "5e+06": {
+          "mean_diff": -0.00042242326686810504,
+          "ci_low": -0.0012768808917026728,
+          "ci_high": 0.0005275592382633446,
+          "p_value": 0.82315,
+          "p_value_holm": 0.82315
+        }
+      },
+      "rougeL": {
+        "5e+06": {
+          "mean_diff": 0.015778115577803366,
+          "ci_low": 0.0004747657777992356,
+          "ci_high": 0.03183934849068128,
+          "p_value": 0.0213,
+          "p_value_holm": 0.0213
+        }
+      }
+    }
+  },
+  "verdict": {
+    "claim_id": "C0008",
+    "proved": false,
+    "metric_pass_counts": {
+      "combined": 1,
+      "iou": 0
+    },
+    "pass_rule": {
+      "metric": [
+        "combined",
+        "iou"
+      ],
+      "alternative": "greater",
+      "p_holm_threshold": 0.05,
+      "min_pass_budgets": 4,
+      "required_budgets": 6
+    }
+  },
+  "text_metrics_enabled": true,
+  "per_mode_budget_seed_dirs": {
+    "free_form": {
+      "5e+06": {
+        "0": "outputs/E0186-full/mode_free_form/budget_5e+06/seed_0",
+        "1": "outputs/E0186-full/mode_free_form/budget_5e+06/seed_1",
+        "2": "outputs/E0186-full/mode_free_form/budget_5e+06/seed_2"
+      }
+    },
+    "full": {
+      "5e+06": {
+        "0": "outputs/E0186-full/mode_full/budget_5e+06/seed_0",
+        "1": "outputs/E0186-full/mode_full/budget_5e+06/seed_1",
+        "2": "outputs/E0186-full/mode_full/budget_5e+06/seed_2"
+      }
+    }
+  }
+}
