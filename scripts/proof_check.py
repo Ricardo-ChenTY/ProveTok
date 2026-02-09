@@ -1182,6 +1182,94 @@ def check_c0006() -> ClaimCheck:
     )
 
 
+def check_c0007() -> ClaimCheck:
+    """C0007: BET near-oracle gap (pp.md E1)."""
+    path = _find_latest(
+        patterns=[
+            "E0180*/figX_bet_near_oracle_gap.json",
+            "**/figX_bet_near_oracle_gap.json",
+        ],
+        preferred_roots=[ROOT / "outputs"],
+    )
+    if path is None:
+        return ClaimCheck("C0007", proved=False, summary="missing figX_bet_near_oracle_gap.json artifact.", details={})
+
+    d = _read_json(path)
+    rows = d.get("rows") or []
+    gap_threshold = float(d.get("gap_threshold", 0.15))
+    required = int(d.get("required_pass_count", 5))
+    pass_count = int(d.get("pass_count", 0))
+    ours = str(((d.get("meta") or {}).get("config") or {}).get("ours", ""))
+
+    # Minimal sanity: near-oracle gap is defined over multi-budget sweep.
+    if len(rows) < 3:
+        return ClaimCheck(
+            "C0007",
+            proved=False,
+            summary=f"not proved: need >=3 budgets for C0007 (got {len(rows)}).",
+            details={"path": str(path), "num_rows": len(rows), "ours": ours},
+        )
+
+    proved = bool(pass_count >= required)
+    return ClaimCheck(
+        "C0007",
+        proved=proved,
+        summary=(
+            "proved: bet_alg is near-oracle across budgets"
+            if proved
+            else f"not proved: only {pass_count}/{required} budgets meet gap_threshold={gap_threshold:.2f}"
+        ),
+        details={
+            "path": str(path),
+            "profile": ACTIVE_PROFILE,
+            "ours": ours,
+            "gap_threshold": float(gap_threshold),
+            "pass_count": int(pass_count),
+            "required_pass_count": int(required),
+            "rows": rows,
+        },
+    )
+
+
+def check_c0008() -> ClaimCheck:
+    """C0008: LLaMA2 contract ablation (pp.md E2.1)."""
+    # Prefer the canonical evidence experiment (E0183*) even if newer auxiliary
+    # runs exist (e.g. single-budget text-quality audits).
+    path = _find_latest(patterns=["E0183*/figX_llama2_contract_ablation.json"], preferred_roots=[ROOT / "outputs"])
+    if path is None:
+        path = _find_latest(patterns=["**/figX_llama2_contract_ablation.json"], preferred_roots=[ROOT / "outputs"])
+    if path is None:
+        return ClaimCheck("C0008", proved=False, summary="missing figX_llama2_contract_ablation.json artifact.", details={})
+
+    d = _read_json(path)
+    verdict = d.get("verdict") or {}
+    proved = bool(verdict.get("proved", False))
+    pass_rule = verdict.get("pass_rule") or {}
+    metric_pass_counts = verdict.get("metric_pass_counts") or {}
+    budgets = d.get("budgets") or []
+    methods = d.get("methods") or []
+    modes = d.get("modes") or []
+
+    required_budgets = int(pass_rule.get("required_budgets", 6)) if isinstance(pass_rule, dict) else 6
+    if len(budgets) < required_budgets:
+        proved = False
+
+    return ClaimCheck(
+        "C0008",
+        proved=proved,
+        summary=("proved: contract ablation passes (full > free_form)" if proved else "not proved: contract ablation did not meet pass rule"),
+        details={
+            "path": str(path),
+            "profile": ACTIVE_PROFILE,
+            "budgets": budgets,
+            "methods": methods,
+            "modes": modes,
+            "metric_pass_counts": metric_pass_counts,
+            "pass_rule": pass_rule,
+        },
+    )
+
+
 def main() -> int:
     global ACTIVE_PROFILE
     ap = argparse.ArgumentParser(description="Quick proof-status checker for docs/plan.md claims (scaffold).")
@@ -1197,6 +1285,8 @@ def main() -> int:
         check_c0004(),
         check_c0005(),
         check_c0006(),
+        check_c0007(),
+        check_c0008(),
     ]
     report = {
         "root": str(ROOT),

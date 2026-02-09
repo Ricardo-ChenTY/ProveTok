@@ -62,6 +62,9 @@ def main() -> None:
     ap.add_argument("--pcg", type=str, default="toy", choices=["toy", "llama2"])
     ap.add_argument("--llama2-path", type=str, default="/data/models/Llama-2-7b-chat-hf")
     ap.add_argument("--llama2-quant", type=str, default="fp16", choices=["fp16", "8bit"])
+    ap.add_argument("--llama2-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full"])
+    ap.add_argument("--llama2-citation-source", type=str, default="score_override", choices=["score_override", "llm"])
+    ap.add_argument("--llama2-max-frames", type=int, default=1)
     ap.add_argument("--pcg-refresh-period", type=int, default=1)
     ap.add_argument("--encoder", type=str, default="toy", choices=["toy", "cnn3d"])
     ap.add_argument("--encoder-device", type=str, default="cuda")
@@ -106,6 +109,9 @@ def main() -> None:
                 max_new_tokens=max(128, int(args.b_gen)),
                 temperature=0.0,
                 topk_citations=3,
+                contract_mode=str(args.llama2_contract_mode),
+                citation_source=str(args.llama2_citation_source),
+                max_frames=int(args.llama2_max_frames),
             )
         )
 
@@ -129,6 +135,9 @@ def main() -> None:
             pcg_backend=str(args.pcg),
             llama2_path=str(args.llama2_path),
             llama2_quant=str(args.llama2_quant),
+            llama2_contract_mode=str(args.llama2_contract_mode),
+            llama2_citation_source=str(args.llama2_citation_source),
+            llama2_max_frames=int(args.llama2_max_frames),
             pcg_refresh_period=int(args.pcg_refresh_period),
             encoder_backend=str(args.encoder),
             encoder_device=str(args.encoder_device),

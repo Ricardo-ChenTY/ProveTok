@@ -93,8 +93,16 @@ def build_report(curve: dict) -> Dict[str, Any]:
                     None if n_pred_pos is None else n_pred_pos.mean,
                     None if n_pred_total is None else n_pred_total.mean,
                 ),
+                "abs_frame_rate_mean": _ratio(
+                    None if n_pred_abs is None else n_pred_abs.mean,
+                    None if n_pred_total is None else n_pred_total.mean,
+                ),
                 "cite_pos_share_mean": _ratio(
                     None if n_cite_pos is None else n_cite_pos.mean,
+                    None if n_cite_total is None else n_cite_total.mean,
+                ),
+                "cite_nonpos_share_mean": _ratio(
+                    None if n_cite_nonpos is None else n_cite_nonpos.mean,
                     None if n_cite_total is None else n_cite_total.mean,
                 ),
             }
@@ -135,13 +143,16 @@ def render_markdown(report: Dict[str, Any], *, curve_json: Path) -> str:
     out.append("**Grounding semantics**")
     out.append("- `IoU_pos_only`: 只统计 polarity∈{present,positive} 的 frames 上的 citations（见 `provetok/eval/metrics_grounding.py::_select_positive_citations`）。")
     out.append("- `IoU_all_frames` 仅用于诊断：把所有 frames 的 citations union 后算 IoU。由于 absent/negative statements 没有 lesion mask，对主结论不采用该口径。")
+    out.append("- `abs` 统计口径：polarity∈{absent,negative} 的 frames 数量（用于解释“高预算回撤/IoU≈0 是否来自输出分布改变”）。")
     out.append("")
 
     header = ["Budget"]
     for method in methods:
         header += [
             f"{method}: pos/total",
+            f"{method}: abs/total",
             f"{method}: cite_pos/total",
+            f"{method}: cite_nonpos/total",
             f"{method}: IoU_pos",
             f"{method}: IoU_all",
         ]
@@ -156,12 +167,16 @@ def render_markdown(report: Dict[str, Any], *, curve_json: Path) -> str:
             mm = by_m.get(method) or {}
             n_pos = ((mm.get("n_frames_pred_pos") or {}) or {}).get("mean")
             n_tot = ((mm.get("n_frames_pred_total") or {}) or {}).get("mean")
+            n_abs = ((mm.get("n_frames_pred_absent") or {}) or {}).get("mean")
             c_pos = ((mm.get("n_citations_pos") or {}) or {}).get("mean")
             c_tot = ((mm.get("n_citations_total") or {}) or {}).get("mean")
+            c_nonpos = ((mm.get("n_citations_nonpos") or {}) or {}).get("mean")
             iou_pos = ((mm.get("iou_pos_only") or {}) or {}).get("mean")
             iou_all = ((mm.get("iou_all_frames") or {}) or {}).get("mean")
             cells.append(f"{_fmt_int(n_pos)}/{_fmt_int(n_tot)}")
+            cells.append(f"{_fmt_int(n_abs)}/{_fmt_int(n_tot)}")
             cells.append(f"{_fmt_int(c_pos)}/{_fmt_int(c_tot)}")
+            cells.append(f"{_fmt_int(c_nonpos)}/{_fmt_int(c_tot)}")
             cells.append(_fmt(iou_pos, 4))
             cells.append(_fmt(iou_all, 4))
         out.append("| " + " | ".join(cells) + " |")
@@ -204,4 +219,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

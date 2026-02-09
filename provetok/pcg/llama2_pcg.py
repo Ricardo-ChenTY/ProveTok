@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from ..data.frame_extractor import FrameExtractor
 from ..types import Frame, Generation, Token
 from ..grid.cells import parse_cell_id
 from .narrative import render_generation_text
@@ -76,6 +77,94 @@ class Llama2PCGConfig:
     max_tokens_in_prompt: int = 64   # keep prompt bounded (context-safe default)
     max_frames: int = 1              # keep JSON short; set >1 for multi-finding reports
     fallback_finding: str = "opacity"  # used when parsing fails or frames are empty
+    contract_mode: str = "full"        # "free_form" | "schema_only" | "schema_citations" | "full"
+    citation_source: str = "score_override"  # "score_override" | "llm"
+
+
+def build_llama2_json_prompt(tokens: List[Token], *, cfg: Llama2PCGConfig, max_tokens_in_prompt: Optional[int] = None) -> str:
+    """Build a bounded Llama-2 chat prompt that requests a single JSON object."""
+    limit = int(cfg.max_tokens_in_prompt if max_tokens_in_prompt is None else max_tokens_in_prompt)
+    toks = sorted(tokens, key=lambda t: (-float(t.score), int(t.token_id)))[: max(0, limit)]
+    tok_lines = [
+        f"- id={t.token_id} cell_id={t.cell_id} score={t.score:.3f} uncertainty={t.uncertainty:.3f} level={t.level}"
+        for t in toks
+    ]
+
+    schema_hint = {
+        "findings": FINDINGS,
+        "polarity": POLARITY,
+        "laterality": LATERALITY,
+        "location": LOCATIONS,
+        "size_bin": SIZE_BINS,
+        "severity": SEVERITY_LEVELS,
+    }
+
+    mode = str(getattr(cfg, "contract_mode", "full")).strip().lower()
+    max_frames = max(0, int(getattr(cfg, "max_frames", 1)))
+    require_citations = mode in ("schema_citations", "full")
+
+    sys_msg = (
+        "You are a strict JSON generator for a radiology-claim schema. "
+        "Output ONLY a single JSON object. No markdown. No commentary."
+    )
+    # Keep the template minimal to reduce the chance of JSON truncation.
+    # Optional frame slots are filled by `sanitize_generation_dict`.
+    template: Dict[str, Any] = {
+        "frames": [{"finding": "opacity", "polarity": "present", "laterality": "unspecified", "confidence": 0.5}],
+        "citations": ({"0": [0]} if require_citations else {}),
+        "q": {"0": 0.5},
+        "refusal": {"0": False},
+    }
+
+    cite_rule = (
+        "- citations must be a JSON object mapping each frame index (as a string) to a list of token ids.\n"
+        if require_citations
+        else "- citations must be an empty JSON object: {}.\n"
+    )
+    user_msg = (
+        "Return ONLY valid JSON that can be parsed by Python json.loads.\n"
+        "Rules:\n"
+        "- Output exactly one JSON object.\n"
+        "- Use double quotes for all keys/strings.\n"
+        "- Do NOT write any text before/after the JSON.\n"
+        f"- frames must contain at most {max_frames} items.\n"
+        "- For brevity, each frame should include ONLY: finding, polarity, laterality, confidence.\n"
+        + cite_rule +
+        "- citations/q/refusal keys must be string frame indices (e.g. \"0\").\n"
+        "Allowed vocab values:\n"
+        f"{json.dumps(schema_hint, ensure_ascii=False)}\n"
+        "Token list (evidence tokens):\n"
+        + "\n".join(tok_lines)
+        + "\n\n"
+        "JSON TEMPLATE (copy this structure exactly, filling values):\n"
+        f"{json.dumps(template, ensure_ascii=False)}\n"
+    )
+    # Llama-2 chat format.
+    return f"<s>[INST] <<SYS>>\n{sys_msg}\n<</SYS>>\n\n{user_msg} [/INST]"
+
+
+def build_llama2_free_form_prompt(tokens: List[Token], *, cfg: Llama2PCGConfig, max_tokens_in_prompt: Optional[int] = None) -> str:
+    """Build a bounded prompt that asks for a free-form radiology report text."""
+    limit = int(cfg.max_tokens_in_prompt if max_tokens_in_prompt is None else max_tokens_in_prompt)
+    toks = sorted(tokens, key=lambda t: (-float(t.score), int(t.token_id)))[: max(0, limit)]
+    tok_lines = [
+        f"- id={t.token_id} cell_id={t.cell_id} score={t.score:.3f} uncertainty={t.uncertainty:.3f} level={t.level}"
+        for t in toks
+    ]
+
+    max_frames = max(0, int(getattr(cfg, "max_frames", 1)))
+    sys_msg = "You are a radiology report generator. Output ONLY plain text. No JSON. No markdown."
+    user_msg = (
+        "Write a short radiology report (1-4 sentences) describing up to "
+        f"{max_frames} findings.\n"
+        "Do not include any JSON.\n"
+        "Do not include token ids or citations.\n"
+        f"Allowed finding terms (preferred): {', '.join(FINDINGS)}.\n"
+        "Evidence tokens (for your internal grounding, do not copy verbatim):\n"
+        + "\n".join(tok_lines)
+        + "\n"
+    )
+    return f"<s>[INST] <<SYS>>\n{sys_msg}\n<</SYS>>\n\n{user_msg} [/INST]"
 
 
 def parse_llm_json(text: str) -> Dict[str, Any]:
@@ -248,54 +337,10 @@ class Llama2PCG:
         self.model.eval()
 
     def _build_prompt(self, tokens: List[Token], *, max_tokens_in_prompt: Optional[int] = None) -> str:
-        # Keep prompt short: take top tokens by score (evidence head proxy), then stable by token_id.
-        limit = int(self.cfg.max_tokens_in_prompt if max_tokens_in_prompt is None else max_tokens_in_prompt)
-        toks = sorted(tokens, key=lambda t: (-float(t.score), int(t.token_id)))[: max(0, limit)]
-        tok_lines = [
-            f"- id={t.token_id} cell_id={t.cell_id} score={t.score:.3f} uncertainty={t.uncertainty:.3f} level={t.level}"
-            for t in toks
-        ]
-
-        schema_hint = {
-            "findings": FINDINGS,
-            "polarity": POLARITY,
-            "laterality": LATERALITY,
-            "location": LOCATIONS,
-            "size_bin": SIZE_BINS,
-            "severity": SEVERITY_LEVELS,
-        }
-
-        sys_msg = (
-            "You are a strict JSON generator for a radiology-claim schema. "
-            "Output ONLY a single JSON object. No markdown. No commentary."
-        )
-        # Keep the template minimal to reduce the chance of JSON truncation.
-        # Optional frame slots are filled by `sanitize_generation_dict`.
-        template = {
-            "frames": [{"finding": "opacity", "polarity": "present", "laterality": "unspecified", "confidence": 0.5}],
-            "citations": {"0": [0]},
-            "q": {"0": 0.5},
-            "refusal": {"0": False},
-        }
-        user_msg = (
-            "Return ONLY valid JSON that can be parsed by Python json.loads.\n"
-            "Rules:\n"
-            "- Output exactly one JSON object.\n"
-            "- Use double quotes for all keys/strings.\n"
-            "- Do NOT write any text before/after the JSON.\n"
-            "- frames must contain exactly 1 item.\n"
-            "- For brevity, each frame should include ONLY: finding, polarity, laterality, confidence.\n"
-            "- citations/q/refusal keys must be string frame indices (e.g. \"0\").\n"
-            "Allowed vocab values:\n"
-            f"{json.dumps(schema_hint, ensure_ascii=False)}\n"
-            "Token list (evidence tokens):\n"
-            + "\n".join(tok_lines)
-            + "\n\n"
-            "JSON TEMPLATE (copy this structure exactly, filling values):\n"
-            f"{json.dumps(template, ensure_ascii=False)}\n"
-        )
-        # Llama-2 chat format.
-        return f"<s>[INST] <<SYS>>\n{sys_msg}\n<</SYS>>\n\n{user_msg} [/INST]"
+        mode = str(getattr(self.cfg, "contract_mode", "full")).strip().lower()
+        if mode == "free_form":
+            return build_llama2_free_form_prompt(tokens, cfg=self.cfg, max_tokens_in_prompt=max_tokens_in_prompt)
+        return build_llama2_json_prompt(tokens, cfg=self.cfg, max_tokens_in_prompt=max_tokens_in_prompt)
 
     def _parse_json(self, text: str) -> Dict:
         return parse_llm_json(text)
@@ -335,7 +380,37 @@ class Llama2PCG:
         out = self.model.generate(**inputs, **gen_kwargs)
         # Decode only newly generated tokens to avoid accidentally parsing JSON snippets embedded in the prompt.
         gen_ids = out[0][inputs["input_ids"].shape[1] :]
-        text = self.tokenizer.decode(gen_ids, skip_special_tokens=True)
+        text = self.tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
+
+        mode = str(getattr(self.cfg, "contract_mode", "full")).strip().lower()
+        if mode == "free_form":
+            extractor = FrameExtractor()
+            frames = extractor.extract_frames(text)[: max(0, int(getattr(self.cfg, "max_frames", 1)))]
+            if not frames:
+                finding = str(getattr(self.cfg, "fallback_finding", "opacity")).lower()
+                if finding not in set(FINDINGS):
+                    finding = "opacity"
+                frames = [
+                    Frame(
+                        finding=finding,
+                        polarity="present",
+                        laterality="unspecified",
+                        confidence=0.5,
+                        location="unspecified",
+                        size_bin="unspecified",
+                        severity="unspecified",
+                        uncertain=True,
+                    )
+                ]
+            citations = {int(i): [] for i in range(len(frames))}
+            q = {int(i): _clamp01(float(getattr(fr, "confidence", 0.5))) for i, fr in enumerate(frames)}
+            refusal = {
+                int(i): bool(q[int(i)] < float(self.cfg.tau_refuse) and str(getattr(fr, "polarity", "")) in ("present", "positive"))
+                for i, fr in enumerate(frames)
+            }
+            # For free-form mode, preserve the raw text channel (not the deterministic narrative).
+            return Generation(frames=frames, citations=citations, q=q, refusal=refusal, text=str(text))
+
         try:
             d = self._parse_json(text)
         except Exception:
@@ -371,7 +446,20 @@ class Llama2PCG:
             )
             gen = Generation(frames=gen.frames, citations=gen.citations, q=gen.q, refusal=gen.refusal, text=render_generation_text(gen))
 
-        # Deterministic citation repair:
+        # Contract modes:
+        # - schema_only: citations are intentionally absent
+        # - schema_citations/full: citations are required; default is deterministic score-based override.
+        if mode == "schema_only":
+            citations = {int(i): [] for i in range(len(gen.frames))}
+            gen = Generation(frames=gen.frames, citations=citations, q=gen.q, refusal=gen.refusal, text=gen.text)
+            return gen
+
+        citation_source = str(getattr(self.cfg, "citation_source", "score_override")).strip().lower()
+        if citation_source == "llm":
+            # Keep sanitized citations from the model output (already filtered to valid token ids).
+            return gen
+
+        # Deterministic citation repair (score-based override):
         #
         # In practice, even "strict JSON" prompts can lead to degenerate citations
         # (e.g., the model copies the template `"citations":{"0":[0]}` for all

@@ -85,6 +85,9 @@ class ScalingExperimentConfig:
     pcg_backend: str = "toy"  # "toy" or "llama2"
     llama2_path: str = "/data/models/Llama-2-7b-chat-hf"
     llama2_quant: str = "fp16"  # "fp16" or "8bit"
+    llama2_contract_mode: str = "full"  # "free_form" | "schema_only" | "schema_citations" | "full"
+    llama2_citation_source: str = "score_override"  # "score_override" | "llm"
+    llama2_max_frames: int = 1
     pcg_refresh_period: int = 1
     encoder_backend: str = "toy"  # "toy" or "cnn3d"
     encoder_device: str = "cuda"
@@ -150,9 +153,15 @@ class SingleBudgetResult:
     # Efficiency
     avg_tokens_used: float
     avg_steps: float
+    avg_verifier_calls: float
+    token_level_mean: float
+    token_level_p95: float
     avg_stop_reason: Dict[str, int]
     tokens_used_samples: List[float]
     steps_used_samples: List[float]
+    verifier_calls_samples: List[float]
+    token_level_mean_samples: List[float]
+    token_level_p95_samples: List[float]
 
     # Compute + latency
     flops_total_target: float
@@ -216,6 +225,9 @@ def run_single_budget(
     hit_scores = []
     tokens_used = []
     steps_used = []
+    verifier_calls = []
+    token_level_means: List[float] = []
+    token_level_p95s: List[float] = []
     stop_reasons = {}
     flops_total_samples = []
     warm_times_s: List[float] = []
@@ -322,6 +334,10 @@ def run_single_budget(
         # 记录效率
         tokens_used.append(len(result.tokens))
         steps_used.append(result.total_steps)
+        verifier_calls.append(float(sum(1 for tr in (result.trace or []) if bool(getattr(tr, "verifier_refreshed", False)))))
+        levels = [int(t.level) for t in (result.tokens or [])]
+        token_level_means.append(float(np.mean(levels)) if levels else 0.0)
+        token_level_p95s.append(float(np.quantile(np.asarray(levels, dtype=np.float64), 0.95)) if levels else 0.0)
 
         bud_realized = format_budget_report(
             b_enc=int(len(result.tokens)),
@@ -394,9 +410,15 @@ def run_single_budget(
         rougeL_samples=[float(x) for x in rougeL_scores],
         avg_tokens_used=np.mean(tokens_used),
         avg_steps=np.mean(steps_used),
+        avg_verifier_calls=float(np.mean(verifier_calls)) if verifier_calls else 0.0,
+        token_level_mean=float(np.mean(token_level_means)) if token_level_means else 0.0,
+        token_level_p95=float(np.mean(token_level_p95s)) if token_level_p95s else 0.0,
         avg_stop_reason=stop_reasons,
         tokens_used_samples=[float(x) for x in tokens_used],
         steps_used_samples=[float(x) for x in steps_used],
+        verifier_calls_samples=[float(x) for x in verifier_calls],
+        token_level_mean_samples=[float(x) for x in token_level_means],
+        token_level_p95_samples=[float(x) for x in token_level_p95s],
         flops_total_target=float(flops_total_target),
         flops_total_mean=float(np.mean(flops_total_samples)) if flops_total_samples else 0.0,
         flops_total_std=float(np.std(flops_total_samples)) if flops_total_samples else 0.0,
@@ -439,6 +461,9 @@ def run_scaling_experiment(
                     max_new_tokens=max(128, int(config.b_gen)),
                     temperature=0.0,
                     topk_citations=3,
+                    contract_mode=str(config.llama2_contract_mode),
+                    citation_source=str(config.llama2_citation_source),
+                    max_frames=int(config.llama2_max_frames),
                 )
             )
             generator_fn = lambda toks: pcg(toks)
@@ -600,6 +625,9 @@ def _save_scaling_results(result: ScalingExperimentResult, output_dir: str):
         "efficiency": {
             "tokens_used": [r.avg_tokens_used for r in result.budget_results],
             "steps_used": [r.avg_steps for r in result.budget_results],
+            "verifier_calls": [r.avg_verifier_calls for r in result.budget_results],
+            "token_level_mean": [r.token_level_mean for r in result.budget_results],
+            "token_level_p95": [r.token_level_p95 for r in result.budget_results],
         },
         "compute": {
             "b_gen": int(result.config.b_gen),
@@ -626,6 +654,9 @@ def _save_scaling_results(result: ScalingExperimentResult, output_dir: str):
             "hit_rate": [r.hit_samples for r in result.budget_results],
             "tokens_used": [r.tokens_used_samples for r in result.budget_results],
             "steps_used": [r.steps_used_samples for r in result.budget_results],
+            "verifier_calls": [r.verifier_calls_samples for r in result.budget_results],
+            "token_level_mean": [r.token_level_mean_samples for r in result.budget_results],
+            "token_level_p95": [r.token_level_p95_samples for r in result.budget_results],
             "flops_total": [r.flops_total_samples for r in result.budget_results],
             "warm_time_s": [r.warm_times_s for r in result.budget_results],
         },
@@ -760,6 +791,9 @@ def main():
     parser.add_argument("--pcg", type=str, default="toy", choices=["toy", "llama2"], help="PCG backend")
     parser.add_argument("--llama2-path", type=str, default="/data/models/Llama-2-7b-chat-hf")
     parser.add_argument("--llama2-quant", type=str, default="fp16", choices=["fp16", "8bit"])
+    parser.add_argument("--llama2-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full"])
+    parser.add_argument("--llama2-citation-source", type=str, default="score_override", choices=["score_override", "llm"])
+    parser.add_argument("--llama2-max-frames", type=int, default=1)
     parser.add_argument("--pcg-refresh-period", type=int, default=1, help="Refresh PCG every N refine steps (LLM mode)")
     parser.add_argument("--encoder", type=str, default="toy", choices=["toy", "cnn3d"], help="3D encoder backend")
     parser.add_argument("--encoder-device", type=str, default="cuda", help="Device for encoder (e.g. cuda)")
@@ -798,6 +832,9 @@ def main():
         pcg_backend=args.pcg,
         llama2_path=args.llama2_path,
         llama2_quant=args.llama2_quant,
+        llama2_contract_mode=str(args.llama2_contract_mode),
+        llama2_citation_source=str(args.llama2_citation_source),
+        llama2_max_frames=int(args.llama2_max_frames),
         pcg_refresh_period=int(args.pcg_refresh_period),
         encoder_backend=args.encoder,
         encoder_device=args.encoder_device,

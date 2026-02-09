@@ -37,6 +37,15 @@
     - `python scripts/proof_check.py` 的 C0006 对强基线做最小非退化门槛检查（例如 frame_f1 不为 0）。
   - Verification: `python -c "import pathlib; assert pathlib.Path('outputs/E0140-full/ct2rep_strong.pt').exists(); print('weights_ok')" && python -m provetok.experiments.run_baselines --smoke --dataset-type manifest --manifest /data/provetok_datasets/rexgroundingct_mini/manifest.jsonl --split test --ct2rep-strong-weights outputs/E0140-full/ct2rep_strong.pt --output-dir ./outputs/_verify_ct2rep_strong && python scripts/proof_check.py | python -c "import json,sys; d=json.load(sys.stdin); c=[x for x in d['checks'] if x['claim_id']=='C0006'][0]; print('proved', c['proved'])\"`
 
+- [x] M0121: C0008 论文级：合同消融输出补齐 BLEU/ROUGE，并提供 `--no-text-metrics`
+  - Ref: C0008, E0183
+  - Context: 之前 `figX_llama2_contract_ablation` 为了节省时间禁用了 text metrics，导致无法回答“合同约束是否牺牲报告质量”。
+  - Acceptance:
+    - `provetok/experiments/figX_llama2_contract_ablation.py` 默认启用 BLEU/ROUGE（可用 `--no-text-metrics` 显式关闭）；
+    - `figX_llama2_contract_ablation.json` 顶层写入 `text_metrics_enabled` 并在启用时包含 `bleu/rougeL` 的聚合结果（用于报告质量审计，非硬 gate）。
+  - Verification: `python -m provetok.experiments.figX_llama2_contract_ablation --help | rg -- '--no-text-metrics' && pytest -q tests/test_contract_ablation_text_metrics_flag.py`
+  - Resolution: 已为 `figX_llama2_contract_ablation` 增加 `--no-text-metrics`，默认启用 BLEU/ROUGE；并在 `run_baselines` 中对 free_form 模式使用原始 LLM 文本计算 text metrics（其余模式仍用 frames→report 的自然化文本）。
+
 - [x] M0114: `.rd_queue sync` 修复 checkbox 语义（Full 通过后 Smoke 不能倒挂）
   - Ref: P0031, P0022, C0001, C0002, C0003, C0004, C0005, C0006
   - Context: 之前台账里出现过 `Full=[x]` 但 `Smoke=[ ]` 的倒挂；新增/更新实验后会再次触发该类漂移，导致 rd_queue 无法稳定复用。

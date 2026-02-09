@@ -22,6 +22,7 @@ import torch
 
 from ..types import Generation, Token
 from ..baselines import (
+    BETAlgTokenizer,
     FixedGridTokenizer,
     FixedGridTokenizerScored,
     NoRefineTokenizer,
@@ -77,6 +78,9 @@ class BaselineRunConfig:
     pcg_backend: str = "toy"  # "toy" or "llama2"
     llama2_path: str = "/data/models/Llama-2-7b-chat-hf"
     llama2_quant: str = "fp16"  # "fp16" or "8bit"
+    llama2_contract_mode: str = "full"  # "free_form" | "schema_only" | "schema_citations" | "full"
+    llama2_citation_source: str = "score_override"  # "score_override" | "llm"
+    llama2_max_frames: int = 1
     methods: List[str] = field(default_factory=list)  # Optional subset of tokenizers to run.
     nlg_weight: float = 0.5
     grounding_weight: float = 0.5
@@ -88,7 +92,7 @@ class BaselineRunConfig:
     compute_text_metrics: bool = True
 
 
-_LLAMA2_PCG_CACHE: Dict[Tuple[str, str, int, int], Llama2PCG] = {}
+_LLAMA2_PCG_CACHE: Dict[Tuple[str, str, int, int, str, str, int], Llama2PCG] = {}
 
 
 def _grounding_union(gen: Generation, tokens, lesion_masks, volume_shape) -> Dict[str, float]:
@@ -216,7 +220,15 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
         # Cache LLM instances when running multi-budget sweeps in a single process.
         # This is required for practicality (loading the model repeatedly is prohibitive).
         max_new_tokens = max(128, int(cfg.b_gen))
-        key = (str(cfg.llama2_path), str(cfg.llama2_quant), int(max_new_tokens), int(cfg.topk_citations))
+        key = (
+            str(cfg.llama2_path),
+            str(cfg.llama2_quant),
+            int(max_new_tokens),
+            int(cfg.topk_citations),
+            str(cfg.llama2_contract_mode),
+            str(cfg.llama2_citation_source),
+            int(cfg.llama2_max_frames),
+        )
         pcg_llm = _LLAMA2_PCG_CACHE.get(key)
         if pcg_llm is None:
             pcg_llm = Llama2PCG(
@@ -228,6 +240,9 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
                     max_new_tokens=int(max_new_tokens),
                     temperature=0.0,
                     topk_citations=int(cfg.topk_citations),
+                    contract_mode=str(cfg.llama2_contract_mode),
+                    citation_source=str(cfg.llama2_citation_source),
+                    max_frames=int(cfg.llama2_max_frames),
                 )
             )
             _LLAMA2_PCG_CACHE[key] = pcg_llm
@@ -250,6 +265,15 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             )
             if token_score_fn is not None
             else FixedGridTokenizer(max_depth=6)
+        ),
+        "bet_alg": (
+            BETAlgTokenizer(
+                max_depth=6,
+                token_score_fn=token_score_fn,
+                token_score_level_power=float(cfg.lesionness_score_level_power),
+            )
+            if token_score_fn is not None
+            else BETAlgTokenizer(max_depth=6)
         ),
         "fixed_grid": FixedGridTokenizer(max_depth=6),
         "slice_2d": SliceTokenizer2D(level=3),
@@ -524,7 +548,14 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             results[name]["n_frames_pos_with_citations"].append(float(n_frames_pos_with_cite))
 
             if text_metrics_enabled:
-                pred_text = frames_to_report(gen_eval.frames)
+                # For contract_mode=free_form, preserve the raw LLM text channel.
+                # For schema-based modes, Generation.text is a machine-parseable narrative,
+                # so we compute text metrics on a naturalized report derived from frames.
+                pred_text = ""
+                if cfg.pcg_backend == "llama2" and str(cfg.llama2_contract_mode) == "free_form":
+                    pred_text = str(getattr(gen_eval, "text", "") or "").strip()
+                if not pred_text:
+                    pred_text = frames_to_report(gen_eval.frames)
                 try:
                     m = compute_text_metrics(pred_text, gt_report_raw)
                 except MissingTextMetricDependency:
@@ -587,6 +618,9 @@ def main() -> None:
     ap.add_argument("--pcg", type=str, default="toy", choices=["toy", "llama2"], help="PCG backend")
     ap.add_argument("--llama2-path", type=str, default="/data/models/Llama-2-7b-chat-hf")
     ap.add_argument("--llama2-quant", type=str, default="fp16", choices=["fp16", "8bit"])
+    ap.add_argument("--llama2-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full"])
+    ap.add_argument("--llama2-citation-source", type=str, default="score_override", choices=["score_override", "llm"])
+    ap.add_argument("--llama2-max-frames", type=int, default=1)
     ap.add_argument("--methods", type=str, nargs="+", default=[], help="Optional subset of tokenizers to run (e.g., provetok_lesionness fixed_grid).")
     ap.add_argument("--smoke", action="store_true", help="Quick run")
     ap.add_argument("--n-samples", type=int, default=30)
@@ -637,6 +671,9 @@ def main() -> None:
             pcg_backend=args.pcg,
             llama2_path=args.llama2_path,
             llama2_quant=args.llama2_quant,
+            llama2_contract_mode=str(args.llama2_contract_mode),
+            llama2_citation_source=str(args.llama2_citation_source),
+            llama2_max_frames=int(args.llama2_max_frames),
             methods=list(args.methods) if args.methods else [],
             nlg_weight=float(args.nlg_weight),
             grounding_weight=float(args.grounding_weight),
@@ -667,6 +704,9 @@ def main() -> None:
                 pcg_backend=args.pcg,
                 llama2_path=args.llama2_path,
                 llama2_quant=args.llama2_quant,
+                llama2_contract_mode=str(args.llama2_contract_mode),
+                llama2_citation_source=str(args.llama2_citation_source),
+                llama2_max_frames=int(args.llama2_max_frames),
                 methods=list(args.methods) if args.methods else [],
                 nlg_weight=float(args.nlg_weight),
                 grounding_weight=float(args.grounding_weight),

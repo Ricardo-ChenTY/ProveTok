@@ -67,6 +67,24 @@ ProveTok: **Proof-Carrying Budgeted Evidence Tokenization for Grounded 3D Report
     - 强 baseline 非退化：`baselines_curve_multiseed` 中 `ct2rep_strong` 的 `frame_f1` 在最后一个 budget 的均值 `>=0.05`；
     - 成本核算：`costs_json` + `budgets_by_method` 可审计复现；不允许 “Full=[x] 但 Smoke=[ ]” 倒挂。
 
+- [x] C0007: BET near-oracle gap（BET-Alg 经验近似最优证据）
+  - Evidence: E0180 (`figX_bet_near_oracle_gap.json`)
+  - Proof rule（paper-grade）：
+    - 在 `budgets>=6` 下，以 per-sample oracle（候选池 methods）定义 `combined` 最优；
+    - 对 ours 方法报告 `gap_ratio = (oracle - ours) / max(oracle, eps)`；
+    - 通过条件：在 budgets 中 **≥5/6** 满足 `gap_ratio_mean <= 0.15`（阈值写死到实验配置；CI 用 bootstrap）。
+    - 最终裁判：`python scripts/proof_check.py` 的 C0007。
+
+- [x] C0008: LLaMA2 合同约束消融（同一 LLaMA2，不同 contract_mode）
+  - Evidence: E0183 (`outputs/E0183-full/figX_llama2_contract_ablation.json`), E0186 (BLEU/ROUGE 单预算审计，非硬 gate)
+  - Proof rule（paper-grade）：
+    - 固定 tokenization、verifier 与 refusal policy（若提供则冻结），只切换 `contract_mode`；
+    - 主对照：`full` vs `free_form`；
+    - `combined`：paired bootstrap one-sided（H1: full > free_form）+ Holm over budgets；在 **≥4/6 budgets** 满足 `mean_diff>0` 且 `p_holm<0.05`；
+    - `iou`：non-inferiority gate（不要求显著提升）；对所有 **6/6 budgets**，paired bootstrap 的 `ci_low(full - free_form) >= 0.0`；
+    - 同时记录 `BLEU/ROUGE`（非硬 gate，可用于回答“报告质量是否受影响”；可用 `--no-text-metrics` 关闭）；
+    - 最终裁判：`python scripts/proof_check.py` 的 C0008。
+
 ## Plan Items (P####)
 
 - [x] P0001: 初始化 RD docs（`docs/plan.md`/`docs/mohu.md`/`docs/experiment.md`）
@@ -299,6 +317,7 @@ ProveTok: **Proof-Carrying Budgeted Evidence Tokenization for Grounded 3D Report
 - 2026-02-07: 完成 E0166/E0167（V0003(A')，CT-RATE TS-Seg 外部自动 mask eval-only）full：`E0166`（`outputs/E0166-ct_rate-tsseg-effusion-grounding-full/figX_grounding_proof.json`）在 `iou_union` 上对 `roi_variance` 达到 `6/6` budgets Holm 显著、对 `fixed_grid` 为 `4/6` budgets Holm 显著（`5/6` 为正）；`E0167` 三 seed（`E0167S0/S1/S2`）显示 `no_cite` 在 `grounding_iou_union_orig_minus_cf` 上 `3/3` 显著（`mean_diff=+0.005909`, Holm `p=0.0`），`omega_perm` 方向一致但未显著。该路径仍属 `silver_auto_unverified`，不替代 gold-mask 证据。
 - 2026-02-07: 完成 E0167R（V0003(A') omega_perm 功效增强）：补跑 `E0167S3..E0167S9` 后汇总 `seeds={0..9}`，产物为 `outputs/E0167R-ct_rate-tsseg-effusion-counterfactual-power/omega_perm_power_report.json`；pooled primary（one-sided）达到 `mean_diff=+0.002007`, `95%CI=[+0.000130,+0.003680]`, `p_one_sided=0.0187`（通过），方向一致性 `9/10`；secondary family-wise Holm 下 `omega_perm p_holm=0.1122`（未过）。
 - 2026-02-07: 完成 E0167R2（V0003(A') omega_perm 功效增强第二轮）：先跑 `E0167RA/E0167RB/E0167RC/E0167RD`（seed0 单变量筛参，`omega_perm` 未优于 baseline），随后补跑 `E0167S10..E0167S19` 并汇总 `seeds={0..19}`，产物为 `outputs/E0167R2-ct_rate-tsseg-effusion-counterfactual-power-seed20/omega_perm_power_report.json`；`omega_perm` pooled primary（one-sided）为 `mean_diff=+0.002567`, `95%CI=[+0.001302,+0.003780]`, `p_one_sided=0.0001`，secondary family-wise Holm 也通过（`p_holm=0.0006`），方向一致性 `19/20`。
+- 2026-02-09: 通过 `.rd_queue` 跑通 E0183/E0186 full（LLaMA2 contract ablation + BLEU/ROUGE 审计），并修复 E0185 full（external-gold subset ingest 在无人工 masks 时仍可生成审计 manifest，且不继承原数据集的 `mask_path`）；更新 C0008 proof rule 为 `combined` superiority + `iou` non-inferiority（CI low >= 0.0）；复跑 `python scripts/oral_audit.py --out outputs/oral_audit.json --strict` 通过（审计时间：`2026-02-09T05:45:08+00:00`）。
 
 ## Appendix A — Paper Outline (verbatim)
 

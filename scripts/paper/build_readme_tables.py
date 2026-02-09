@@ -513,11 +513,19 @@ def build_table6_llama2_grounding_diagnosis(*, llama2_curve_json: Path, out_path
     lines.append("**Grounding semantics (避免 IoU≈0 被误读为“算法失效”)**")
     lines.append("- `IoU_pos_only`: 只统计 polarity∈{present,positive} 的 frames 上的 citations（实现：`provetok/eval/metrics_grounding.py::_select_positive_citations`）。")
     lines.append("- `IoU_all_frames` 仅用于诊断：union 所有 frames 的 citations 后算 IoU。由于 absent/negative statements 没有 lesion mask，对主结论不采用该口径。")
+    lines.append("- `abs` 统计口径：polarity∈{absent,negative} 的 frames 数量（用于解释输出分布变化）。")
     lines.append("")
 
     header = ["Budget"]
     for m in methods:
-        header += [f"{m}: pos/total", f"{m}: cite_pos/total", f"{m}: IoU_pos", f"{m}: IoU_all"]
+        header += [
+            f"{m}: pos/total",
+            f"{m}: abs/total",
+            f"{m}: cite_pos/total",
+            f"{m}: cite_nonpos/total",
+            f"{m}: IoU_pos",
+            f"{m}: IoU_all",
+        ]
     lines.append("| " + " | ".join(header) + " |")
     lines.append("|" + "|".join(["---"] * len(header)) + "|")
 
@@ -526,12 +534,16 @@ def build_table6_llama2_grounding_diagnosis(*, llama2_curve_json: Path, out_path
         for m in methods:
             n_pos = _mean_i("n_frames_pred_pos", m, bidx)
             n_tot = _mean_i("n_frames_pred_total", m, bidx)
+            n_abs = _mean_i("n_frames_pred_absent", m, bidx)
             c_pos = _mean_i("n_citations_pos", m, bidx)
             c_tot = _mean_i("n_citations_total", m, bidx)
+            c_nonpos = _mean_i("n_citations_nonpos", m, bidx)
             iou_pos = _mean_f("iou", m, bidx, 4)
             iou_all = _mean_f("iou_all", m, bidx, 4)
             cells.append(f"{n_pos}/{n_tot}")
+            cells.append(f"{n_abs}/{n_tot}")
             cells.append(f"{c_pos}/{c_tot}")
+            cells.append(f"{c_nonpos}/{c_tot}")
             cells.append(iou_pos)
             cells.append(iou_all)
         lines.append("| " + " | ".join(cells) + " |")

@@ -63,6 +63,9 @@ class Llama2RefusalPilotConfig:
     # Generation
     llama2_path: str = "/data/models/Llama-2-7b-chat-hf"
     llama2_quant: str = "fp16"  # fp16 | 8bit
+    llama2_contract_mode: str = "full"  # "free_form" | "schema_only" | "schema_citations" | "full"
+    llama2_citation_source: str = "score_override"  # "score_override" | "llm"
+    llama2_max_frames: int = 1
     pcg_refresh_period: int = 5
     max_steps: int = 10
 
@@ -291,6 +294,9 @@ def run_pilot(cfg: Llama2RefusalPilotConfig) -> Dict[str, Any]:
             temperature=0.0,
             topk_citations=3,
             tau_refuse=0.55,
+            contract_mode=str(cfg.llama2_contract_mode),
+            citation_source=str(cfg.llama2_citation_source),
+            max_frames=int(cfg.llama2_max_frames),
         )
     )
 
@@ -403,6 +409,9 @@ def main() -> None:
     ap.add_argument("--pcg-refresh-period", type=int, default=5)
     ap.add_argument("--llama2-path", type=str, default="/data/models/Llama-2-7b-chat-hf")
     ap.add_argument("--llama2-quant", type=str, default="fp16", choices=["fp16", "8bit"])
+    ap.add_argument("--llama2-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full"])
+    ap.add_argument("--llama2-citation-source", type=str, default="score_override", choices=["score_override", "llm"])
+    ap.add_argument("--llama2-max-frames", type=int, default=1)
     ap.add_argument("--max-refusal-rate", type=float, default=0.20)
     ap.add_argument("--max-refusal-ece", type=float, default=0.15)
     ap.add_argument("--max-critical-miss-rate", type=float, default=0.05)
@@ -426,6 +435,9 @@ def main() -> None:
         pcg_refresh_period=int(args.pcg_refresh_period),
         llama2_path=str(args.llama2_path),
         llama2_quant=str(args.llama2_quant),
+        llama2_contract_mode=str(args.llama2_contract_mode),
+        llama2_citation_source=str(args.llama2_citation_source),
+        llama2_max_frames=int(args.llama2_max_frames),
         max_refusal_rate=float(args.max_refusal_rate),
         max_refusal_ece=float(args.max_refusal_ece),
         max_critical_miss_rate=float(args.max_critical_miss_rate),
@@ -451,4 +463,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
