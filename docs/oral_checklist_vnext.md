@@ -145,6 +145,8 @@
       - index：`/data/provetok_datasets/radgenome_chestct_mini/radgenome_index.jsonl`
       - manifest：`/data/provetok_datasets/radgenome_chestct_mini/manifest.jsonl`（`split=test`，含 `mask_path`；ProtocolLock 通过）
     - 评测 smoke（grounding proof）：`outputs/E0191-radgenome-chestct-anatomy-grounding-smoke-attnscore/figX_grounding_proof.json`（`n_samples=50`，budgets=`{5e6}`）
+    - 评测 full（grounding proof）：`outputs/E0191-radgenome-chestct-anatomy-grounding-full/figX_grounding_proof.json`（`n_samples=238`，budgets=`{2e6..7e6}`，seeds=`{0,1,2}`）
+      - `iou_union`（ProveTok - fixed_grid）：`{+0.0050,+0.0041}` at budgets `{4e6,5e6}`，Holm 后 `p={0.0093,0.0}`；但在 `7e6` 为 `-0.0004`（Holm `p=1.0`），提示存在 sweet-spot budget，非单调“越算越好”。 
 - 局限（必须口头声明）
   - C（pseudo-mask）路径是弱标签评测，不等价于 gold voxel mask；只用于“跨集可运行 + 趋势参考”，不能替代主结论。
   - 当前 CT-RATE 域偏移明显，`threshold=0.5` 退化后频繁触发 top-k fallback（mean mask ratio≈0.005）；说明 pseudo-mask 质量受限。
