@@ -53,6 +53,7 @@ data/
 scripts/data/*
 !scripts/data/build_ct_rate_pseudomask_manifest.py
 !scripts/data/build_ct_rate_tsseg_effusion_manifest.py
+!scripts/data/make_radgenome_chestct_index.py
 
 # OS
 .DS_Store

@@ -138,11 +138,19 @@
       - 方向一致性：`positive_seeds=19/20`
     - pooled secondary（family-wise Holm across cf keys）：
       - `omega_perm p_holm=0.0006`（通过），`no_cite p_holm=0.0`（通过）
+  - 已执行（2026-02-10，A 路径：RadGenome-ChestCT voxel masks，eval-only）：
+    - 目标：补齐一个“第二数据集 + voxel mask + grounded sentence”的可运行证据（强调：该数据集为 anatomy-grounded，并非 finding-level gold）。
+    - 构建脚本：`scripts/data/make_radgenome_chestct_index.py`（从本地 `/data/tiasha/RadGenome-ChestCT` 按需抽取 masks，不下载全量）
+    - 生成数据集：
+      - index：`/data/provetok_datasets/radgenome_chestct_mini/radgenome_index.jsonl`
+      - manifest：`/data/provetok_datasets/radgenome_chestct_mini/manifest.jsonl`（`split=test`，含 `mask_path`；ProtocolLock 通过）
+    - 评测 smoke（grounding proof）：`outputs/E0191-radgenome-chestct-anatomy-grounding-smoke-slice2p5d/figX_grounding_proof.json`（`n_samples=50`，budgets=`{5e6}`）
 - 局限（必须口头声明）
-  - 该路径是弱标签评测，不等价于 gold voxel mask；只用于“跨集可运行 + 趋势参考”，不能替代主结论。
+  - C（pseudo-mask）路径是弱标签评测，不等价于 gold voxel mask；只用于“跨集可运行 + 趋势参考”，不能替代主结论。
   - 当前 CT-RATE 域偏移明显，`threshold=0.5` 退化后频繁触发 top-k fallback（mean mask ratio≈0.005）；说明 pseudo-mask 质量受限。
-  - TS-Seg 路径同样不是 gold mask，且来源为自动分割（`silver_auto_unverified`）；它提升了“外部来源独立性”，但仍不能替代人工/官方标注证据。
-  - 要把 V0003 升级为强证据，仍建议推进 A/B（真实 mask 或人工标注 eval 子集）。
+  - A'（TS-Seg）路径同样不是 gold mask，且来源为自动分割（`silver_auto_unverified`）；它提升了“外部来源独立性”，但仍不能替代人工/官方标注证据。
+  - A（RadGenome）为 provider voxel masks，但任务定义是 anatomy-grounded（不是 finding-level lesion gold）；建议在口头中把它定位为“外部数据集 generalization 证据”，不替代 ReXGroundingCT finding-level 结论。
+  - 若要把 V0003 升级到最强证据：仍建议推进 B（小规模人工 finding-level eval 子集）以及/或拿到官方隐藏测试集分数（ReXrank submission）。
 - 相关路径
   - manifest schema：`provetok/data/manifest_schema.py`
   - 构建/校验：`scripts/data/build_ct_rate_manifest.py`、`scripts/data/validate_manifest.py`
