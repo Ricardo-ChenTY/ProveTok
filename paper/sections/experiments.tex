@@ -26,11 +26,17 @@ We follow paired bootstrap testing (typically $n_{\mathrm{boot}}{=}20{,}000$) wi
 We report confidence intervals and explicitly track the number of random seeds used for each artifact.
 Implementation details and artifact paths are provided in Table~\ref{tab:oral-minset} and Appendix tables.
 
+To avoid ``multiple comparisons by choice,'' we pre-register hypothesis families at the \emph{claim level}.
+Each claim fixes: the evaluation profile (real vs. silver stress test), the budget sweep or perturbation set, the primary metric(s), the direction of the alternative, and the multiple-comparison correction scope.
+Exact families and pass rules are summarized in Appendix Table~\ref{tab:stats-family} and implemented in our audit scripts.
+
 Concretely, we use:
 \begin{itemize}
-  \item \textbf{Budget families.} For multi-budget claims (e.g., C0001/C0004), we treat budgets as one family and apply Holm correction over the budget sweep.
-  \item \textbf{Counterfactual families.} For counterfactual non-triviality (e.g., C0003 and V0003), we treat perturbation variants (e.g., no\_cite, cite\_swap, $\omega$-perm) as one family and apply Holm correction accordingly.
+  \item \textbf{Budget families.} For multi-budget claims (e.g., C0001/C0004), we treat the budget sweep as the family for each pre-registered hypothesis (per metric; and per baseline when multiple baselines are required) and apply Holm correction over budgets.
+  \item \textbf{Counterfactual families.} For counterfactual non-triviality (e.g., C0003 and V0003), we treat perturbation variants (e.g., no\_cite, cite\_swap, $\omega$-perm) as the family within each metric group and apply Holm correction accordingly.
 \end{itemize}
+
+We treat different claims as different hypothesis families because they address different questions (tradeoffs, grounding, counterfactual non-triviality, refusal calibration), but we use the same fixed splits and do not tune thresholds on the test set.
 
 \subsection{External Validity}
 \paragraph{Backbone transfer.}

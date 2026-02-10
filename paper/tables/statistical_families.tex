@@ -1,0 +1,19 @@
+\begin{table*}[t]
+  \caption{Pre-registered multiple-comparison families and Holm correction scopes for claim-level tests. Unless stated otherwise, all tests use paired bootstrap on per-sample differences with a one-sided alternative for ``improves'' hypotheses.}
+  \label{tab:stats-family}
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabularx}{\textwidth}{l X X}
+    \toprule
+    Claim & Hypotheses and pass rule & Holm family (scope) \\
+    \midrule
+    C0001 & Multi-budget quality+grounding vs Fixed-Grid. Pass if $\Delta$Combined$>0$ and $\Delta$IoU$_{\mathrm{union}}>0$ are Holm-significant on $\geq 4/6$ budgets each, and latency P95/unsupported gates pass on all budgets. & Budgets (6) treated as one family \emph{per metric} (Combined and IoU each corrected over the 6-budget sweep). \\
+    C0004 & Pixel-level grounding vs required baselines (\texttt{fixed\_grid}, \texttt{roi\_variance}). Pass if $\Delta$IoU$_{\mathrm{union}}>0$ is Holm-significant on $\geq 4/6$ budgets for \emph{each} baseline. & Budgets (6) treated as one family \emph{per baseline} for IoU$_{\mathrm{union}}$. \\
+    C0003 & Counterfactual non-triviality: pass if \texttt{no\_cite} significantly degrades grounding and \texttt{cite\_swap} significantly increases unsupportedness. & Counterfactual variants treated as one family \emph{per metric group} (grounding vs unsupported); p-values are Holm-corrected over the variant set in the artifact. \\
+    V0003 ($\omega$-perm) & Cross-dataset stress test: primary pooled one-sided test for $\omega$-permutation; secondary family-wise control reported across counterfactual variants. & Counterfactual variants treated as one family (secondary Holm) for pooled tests. \\
+    C0008 & Contract ablation (full vs free\_form): pass if $\Delta$Combined superiority holds (Holm) on $\geq 4/6$ budgets and IoU is non-inferior on all budgets (CI low $\geq 0$). & Budgets (6) treated as one family per reported metric in the ablation artifact. \\
+    \bottomrule
+  \end{tabularx}
+\end{table*}
+

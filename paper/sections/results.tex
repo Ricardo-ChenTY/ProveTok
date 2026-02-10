@@ -17,6 +17,10 @@ Figure~\ref{fig:budget} shows multi-budget curves under matched-cost evaluation,
   \label{fig:budget}
 \end{figure*}
 
+\paragraph{Effect sizes and interpretation.}
+Because volumetric lesions can occupy a small fraction of voxels, absolute IoU values are often small; a seemingly small $\Delta$IoU can still reflect materially better localization.
+To avoid ``p-value only'' reporting, Appendix Table~\ref{tab:effect-sizes} summarizes per-budget effect sizes with 95\% confidence intervals, along with unsupportedness and latency-tail deltas under the same matched-budget protocol.
+
 \subsection{Clinical Correctness Proxy: Critical-Present Recall}
 Supportedness is a necessary but not sufficient condition for clinical correctness.
 As a minimal correctness proxy, Figure~\ref{fig:critical-recall} reports critical-present recall over a fixed, audited set of safety-critical findings, evaluated under the same matched-budget protocol.
@@ -79,3 +83,7 @@ Figure~\ref{fig:cases} shows representative cases with evidence tokens, citation
   \caption{Qualitative case studies (data: \texttt{\detokenize{outputs/E0163-full-v3/}}).}
   \label{fig:cases}
 \end{figure*}
+
+\paragraph{Failure modes.}
+We deliberately present a qualitative triad: (i) supported successes, (ii) calibrated refusals when evidence is insufficient, and (iii) traceable failures where the verifier pinpoints missing/weak evidence.
+Appendix Table~\ref{tab:case-triad} provides audited case artifacts for each category.

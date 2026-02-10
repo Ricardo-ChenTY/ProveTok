@@ -23,13 +23,12 @@ Groundedness is not an after-the-fact visualization: every generated frame must 
 \end{figure*}
 
 \paragraph{Contributions.}
-We emphasize protocol and auditability over yet another backbone.
+We do not propose a new imaging backbone; instead we contribute two reusable mechanisms and a scriptable audit suite.
 Our contributions are:
 \begin{itemize}
-  \item \textbf{Proof-carrying protocol under matched budgets.} We introduce BET and PCG as a unified contract that makes evidence, refusal, and latency jointly auditable under $\Btotal=\Benc+\Bgen$ (Figure~\ref{fig:system}).
-  \item \textbf{BET as budgeted coverage.} We cast evidence tokenization as a budgeted coverage objective and relate it to classical submodular maximization, motivating greedy approximations and auditable allocation proxies.
-  \item \textbf{Claim-level proof rules and statistics.} We implement scriptable claim-level tests with multi-budget, multi-seed evaluation using paired bootstrap and Holm correction (Table~\ref{tab:oral-minset}).
-  \item \textbf{Decisive evidence via counterfactual and calibration.} We provide counterfactual stress tests showing non-trivial citation effects and calibrated refusal with explicit anti-silencing gates (Figures~\ref{fig:counterfactual} and~\ref{fig:refusal}).
+  \item \textbf{BET-Alg: budgeted evidence tokenization as an algorithm.} We formulate evidence tokenization as cost-aware set selection over explicit 3D support regions and instantiate an auditable greedy refinement algorithm (BET-Alg) that is empirically near-oracle under matched budgets (Table~\ref{tab:oral-minset}).
+  \item \textbf{Proof-carrying generation as a contract.} We define a hard output contract (frames, citations, verifier traces, calibrated refusal) that couples generation with evidence binding under a unified budget $\Btotal=\Benc+\Bgen$ (Figure~\ref{fig:system}) and isolate its causal contribution via contract ablations (Table~\ref{tab:oral-minset}).
+  \item \textbf{Claim-level proof rules and statistics.} We implement scriptable claim-level tests with pre-registered protocols (matched budgets, paired bootstrap, Holm families) so key claims are machine-auditable rather than qualitative.
 \end{itemize}
 
 \paragraph{Paper roadmap.}

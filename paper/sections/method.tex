@@ -22,6 +22,7 @@ This representation makes citations machine-checkable: a citation points to a to
 BET constructs a set of evidence tokens $\{t_i\}$ under budget $\Benc$.
 Conceptually, BET answers: \emph{which spatial regions are worth spending encoder compute on}, when each additional token consumes part of $\Benc$?
 In our implementation, encoding one active cell yields one token; budgets are expressed either directly as a token count ($b_{\mathrm{enc}}$) or via FLOPs/latency-matched accounting (Section~\ref{sec:exp}).
+We refer to our audited greedy refinement instantiation as \textbf{BET-Alg}.
 
 \paragraph{Full-cover initialization to avoid early misses.}
 A greedy refinement policy that starts from a single root cell can ``commit'' too early and miss lesions entirely under strict budgets.

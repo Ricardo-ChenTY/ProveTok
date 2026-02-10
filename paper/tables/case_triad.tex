@@ -1,0 +1,17 @@
+\begin{table*}[t]
+  \caption{Qualitative triad for oral-level audit. Each case includes evidence tokens/$\Omega$, citations, verifier trace, and refusal.}
+  \label{tab:case-triad}
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabularx}{\textwidth}{l X X}
+    \toprule
+    Type & What it demonstrates & Artifact (auditable) \\
+    \midrule
+    Supported success & Non-trivial grounding with no verifier issues: citations point to localized $\Omega$ and satisfy coverage/relevance checks. & \texttt{\detokenize{outputs/E0163-onecase-topk20/case_01af84bdb6480e161f6ad8a5b7c6c8c23828cae419658144f8207454f6627ac9/case.json}} \\
+    Calibrated refusal & Evidence is insufficient under the fixed budget; the system refuses rather than asserting unsupported frames, and the refusal is traceable under anti-silencing gates. & \texttt{\detokenize{outputs/E0163-full-v2/case_9f95d626c7ff5809483d155681ad00a39776dcb1a6ce1117fe03239df28a4bbe/case.json}} \\
+    Failure with trace & A representative failure mode (unsupported): the verifier flags the issue and emits a trace that identifies the violated rule(s) and implicated citations, enabling targeted refinement/mitigation. & \texttt{\detokenize{outputs/E0163-full-v3/case_44f4a3967bcd3c14467f0e3fa18de1a4a0e313fc261b37a58830c18d1b430c57/case.json}} \\
+    \bottomrule
+  \end{tabularx}
+\end{table*}
+
