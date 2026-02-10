@@ -153,6 +153,7 @@
   - A'（TS-Seg）路径同样不是 gold mask，且来源为自动分割（`silver_auto_unverified`）；它提升了“外部来源独立性”，但仍不能替代人工/官方标注证据。
   - A（RadGenome）为 provider voxel masks，但任务定义是 anatomy-grounded（不是 finding-level lesion gold）；建议在口头中把它定位为“外部数据集 generalization 证据”，不替代 ReXGroundingCT finding-level 结论。
   - 若要把 V0003 升级到最强证据：仍建议推进 B（小规模人工 finding-level eval 子集）以及/或拿到官方隐藏测试集分数（ReXrank submission）。
+  - 重要提醒：当前基于 `SaliencyCNN3D` 的 ReXrank submission pipeline 在本地可见 gold（`rexgroundingct_mini/100g` 的 `val/test`）上命中率非常低（`hit@Dice>=0.1` 约 0~0.6%），因此 **E0190 只能算“可提交通道跑通”**，不能当作外部 gold 的强证据；详见 `docs/rexrank_local_verify.md`。
 - 相关路径
   - manifest schema：`provetok/data/manifest_schema.py`
   - 构建/校验：`scripts/data/build_ct_rate_manifest.py`、`scripts/data/validate_manifest.py`
