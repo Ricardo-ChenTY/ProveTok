@@ -28,6 +28,9 @@ from ..baselines import (
     NoRefineTokenizer,
     ROIVarianceTokenizer,
     ROICropTokenizer,
+    SaliencyBETTokenizer,
+    SaliencyCoverRefineTokenizer,
+    SaliencyTopKTokenizer,
     SliceTokenizer2D,
     SliceTokenizer2p5D,
     apply_no_citation,
@@ -87,6 +90,10 @@ class BaselineRunConfig:
     lesionness_weights: str = ""
     lesionness_device: str = "cpu"
     lesionness_score_level_power: float = 0.0
+    saliency_weights: str = ""
+    saliency_device: str = "cpu"
+    saliency_score_reduce: str = "max"
+    saliency_score_level_power: float = 0.0
     ct2rep_strong_weights: str = ""
     ct2rep_strong_device: str = "cpu"
     compute_text_metrics: bool = True
@@ -129,6 +136,51 @@ def _apply_token_scores(tokens: List[Token], *, token_score_fn: Any) -> List[Tok
                 embedding=t.embedding,
                 score=float(s),
                 uncertainty=float(t.uncertainty),
+            )
+        )
+    return out
+
+
+def _clamp01(x: float) -> float:
+    return float(max(0.0, min(1.0, float(x))))
+
+
+def _fuse_token_scores_mul(
+    tokens: List[Token],
+    *,
+    token_score_fn: Any,
+    score_level_power: float = 0.0,
+) -> List[Token]:
+    """Fuse existing token.score with a learned score via multiplication.
+
+    Motivation: score-only selection can be brittle as token count grows.
+    Multiplying saliency-derived scores with lesionness probabilities helps
+    suppress extreme-value false positives while keeping a calibrated [0,1] score.
+    """
+    if token_score_fn is None or not tokens:
+        return tokens
+    emb = torch.stack([t.embedding for t in tokens], dim=0)
+    scores_t = token_score_fn(emb)
+    if not isinstance(scores_t, torch.Tensor):
+        scores_t = torch.tensor(scores_t)  # type: ignore[arg-type]
+    scores = scores_t.detach().cpu().flatten().tolist()
+    if len(scores) != len(tokens):
+        raise ValueError(f"token_score_fn must return N scores, got {len(scores)} for N={len(tokens)}")
+    p = float(score_level_power)
+    out: List[Token] = []
+    for t, s in zip(tokens, scores):
+        fused = _clamp01(float(t.score)) * _clamp01(float(s))
+        if p != 0.0:
+            fused = fused * float((1 + int(t.level)) ** p)
+        fused = _clamp01(float(fused))
+        out.append(
+            Token(
+                token_id=int(t.token_id),
+                cell_id=str(t.cell_id),
+                level=int(t.level),
+                embedding=t.embedding,
+                score=float(fused),
+                uncertainty=float(_clamp01(1.0 - fused)),
             )
         )
     return out
@@ -282,6 +334,28 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
         "roi_crop": ROICropTokenizer(candidate_level=3, roi_max_depth=6),
         # Note: ct2rep_noproof is added below only when real trained weights exist.
     }
+    if str(cfg.saliency_weights).strip():
+        tokenizers["provetok_saliency_bet"] = SaliencyBETTokenizer(
+            saliency_weights=str(cfg.saliency_weights),
+            saliency_device=str(cfg.saliency_device),
+            max_depth=6,
+            min_cover_tokens=64,
+            score_reduce=str(cfg.saliency_score_reduce),
+            score_level_power=float(cfg.saliency_score_level_power),
+        )
+        tokenizers["provetok_saliency_coverrefine"] = SaliencyCoverRefineTokenizer(
+            saliency_weights=str(cfg.saliency_weights),
+            saliency_device=str(cfg.saliency_device),
+            coverage_level=1,
+            max_depth=6,
+            split_score_reduce="max",
+            cite_score_reduce=str(cfg.saliency_score_reduce),
+            cite_score_level_power=max(0.0, float(cfg.saliency_score_level_power) or 1.0),
+        )
+        tokenizers["provetok_saliency_topk"] = SaliencyTopKTokenizer(
+            saliency_weights=str(cfg.saliency_weights),
+            saliency_device=str(cfg.saliency_device),
+        )
     if cfg.ct2rep_strong_weights:
         if not Path(cfg.ct2rep_strong_weights).exists():
             raise FileNotFoundError(f"ct2rep_strong_weights not found: {cfg.ct2rep_strong_weights!r}")
@@ -443,7 +517,13 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
                     f"Consider adjusting tokenizer params or lowering --flops-total."
                 )
             tokens_eval = tokens
-            if name == "provetok_lesionness":
+            if name == "provetok_saliency_bet" and token_score_fn is not None:
+                tokens_eval = _fuse_token_scores_mul(
+                    tokens_eval,
+                    token_score_fn=token_score_fn,
+                    score_level_power=float(cfg.lesionness_score_level_power),
+                )
+            if name in {"provetok_lesionness", "provetok_saliency_bet", "provetok_saliency_coverrefine", "provetok_saliency_topk"}:
                 gen = pcg_provetok(tokens_eval)
             elif name in {"ct2rep_strong", "ct2rep_noproof"}:
                 if ct2rep_strong is None:
@@ -624,6 +704,7 @@ def main() -> None:
     ap.add_argument("--methods", type=str, nargs="+", default=[], help="Optional subset of tokenizers to run (e.g., provetok_lesionness fixed_grid).")
     ap.add_argument("--smoke", action="store_true", help="Quick run")
     ap.add_argument("--n-samples", type=int, default=30)
+    ap.add_argument("--topk-citations", type=int, default=3, help="Number of citations per finding frame.")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--seeds", type=int, nargs="+", default=None, help="Optional list of seeds for multi-seed runs.")
     ap.add_argument("--n-bootstrap", type=int, default=10_000, help="Bootstrap resamples for CI when --seeds is used.")
@@ -644,6 +725,21 @@ def main() -> None:
         type=float,
         default=0.0,
         help="Multiply lesionness scores by (level+1)^p to favor finer cells when selecting citations.",
+    )
+    ap.add_argument("--saliency-weights", type=str, default="", help="Optional path to saliency_cnn3d.pt for SaliencyBET tokenization.")
+    ap.add_argument("--saliency-device", type=str, default="cpu", help="Device for saliency model inference (cpu/cuda).")
+    ap.add_argument(
+        "--saliency-score-reduce",
+        type=str,
+        default="max",
+        choices=["max", "mean", "p90", "p95", "p99"],
+        help="How to reduce saliency probabilities within a cell for SaliencyBET scoring.",
+    )
+    ap.add_argument(
+        "--saliency-score-level-power",
+        type=float,
+        default=0.0,
+        help="Multiply SaliencyBET cell scores by (level+1)^p to favor finer cells.",
     )
     ap.add_argument("--ct2rep-strong-weights", type=str, default="", help="Optional path to ct2rep_strong.pt (paper-grade baseline).")
     ap.add_argument("--ct2rep-strong-device", type=str, default="cpu")
@@ -680,6 +776,11 @@ def main() -> None:
             lesionness_weights=str(args.lesionness_weights),
             lesionness_device=str(args.lesionness_device),
             lesionness_score_level_power=float(args.lesionness_score_level_power),
+            topk_citations=int(args.topk_citations),
+            saliency_weights=str(args.saliency_weights),
+            saliency_device=str(args.saliency_device),
+            saliency_score_reduce=str(args.saliency_score_reduce),
+            saliency_score_level_power=float(args.saliency_score_level_power),
             ct2rep_strong_weights=str(args.ct2rep_strong_weights),
             ct2rep_strong_device=str(args.ct2rep_strong_device),
             compute_text_metrics=(not bool(args.no_text_metrics)),
@@ -714,6 +815,11 @@ def main() -> None:
                 lesionness_weights=str(args.lesionness_weights),
                 lesionness_device=str(args.lesionness_device),
                 lesionness_score_level_power=float(args.lesionness_score_level_power),
+                topk_citations=int(args.topk_citations),
+                saliency_weights=str(args.saliency_weights),
+                saliency_device=str(args.saliency_device),
+                saliency_score_reduce=str(args.saliency_score_reduce),
+                saliency_score_level_power=float(args.saliency_score_level_power),
                 ct2rep_strong_weights=str(args.ct2rep_strong_weights),
                 ct2rep_strong_device=str(args.ct2rep_strong_device),
             )

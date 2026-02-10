@@ -46,6 +46,10 @@ class TrainConfig:
     base_channels: int = 16
     num_layers: int = 4
     dropout: float = 0.0
+    loss: str = "bce_pos_weight"
+    pos_weight_max: float = 0.0  # 0 => no clamp
+    dice_weight: float = 0.5
+    eval_topk_ratio: float = 0.005
     output_dir: str = "./outputs/train_saliency_cnn3d"
 
 
@@ -105,11 +109,13 @@ def _collect(cfg: TrainConfig, *, split: str, max_samples: int) -> Dict[str, Any
 
 
 @torch.no_grad()
-def _eval(model: SaliencyCNN3D, dl: DataLoader, device: torch.device) -> Dict[str, float]:
+def _eval(model: SaliencyCNN3D, dl: DataLoader, device: torch.device, *, topk_ratio: float) -> Dict[str, float]:
     model.eval()
     losses: List[float] = []
     # Simple thresholded voxel F1 (proxy)
     tp = fp = fn = 0
+    dice_topk_vals: List[float] = []
+    iou_topk_vals: List[float] = []
     for xb, yb in dl:
         xb = xb.to(device)
         yb = yb.to(device)
@@ -122,10 +128,38 @@ def _eval(model: SaliencyCNN3D, dl: DataLoader, device: torch.device) -> Dict[st
         fp += int(((pred == 1) & (yt == 0)).sum().item())
         fn += int(((pred == 0) & (yt == 1)).sum().item())
 
+        # Top-k Dice/IoU at union-mask granularity (matches submission-style ratio thresholding).
+        prob = torch.sigmoid(logits).detach()
+        b, c, d, h, w = prob.shape
+        assert c == 1
+        flat = prob.view(b, -1)
+        k = max(1, min(int(round(float(topk_ratio) * float(flat.shape[1]))), int(flat.shape[1])))
+        # For each sample, pick top-k voxels.
+        topk_idx = torch.topk(flat, k=k, dim=1, largest=True).indices
+        pred_topk = torch.zeros_like(flat, dtype=torch.bool)
+        pred_topk.scatter_(1, topk_idx, True)
+        pred_topk = pred_topk.view(b, 1, d, h, w)
+        gt = (yb >= 0.5)
+        inter = (pred_topk & gt).sum(dim=(1, 2, 3, 4)).float()
+        pred_sum = pred_topk.sum(dim=(1, 2, 3, 4)).float()
+        gt_sum = gt.sum(dim=(1, 2, 3, 4)).float()
+        union = (pred_topk | gt).sum(dim=(1, 2, 3, 4)).float()
+        dice = (2.0 * inter + 1e-6) / (pred_sum + gt_sum + 1e-6)
+        iou = (inter + 1e-6) / (union + 1e-6)
+        dice_topk_vals.extend([float(x) for x in dice.detach().cpu().tolist()])
+        iou_topk_vals.extend([float(x) for x in iou.detach().cpu().tolist()])
+
     prec = tp / max(tp + fp, 1)
     rec = tp / max(tp + fn, 1)
     f1 = 0.0 if (prec + rec) <= 0 else (2.0 * prec * rec / (prec + rec))
-    return {"loss": float(np.mean(losses)) if losses else 0.0, "precision": float(prec), "recall": float(rec), "f1": float(f1)}
+    return {
+        "loss": float(np.mean(losses)) if losses else 0.0,
+        "precision": float(prec),
+        "recall": float(rec),
+        "f1": float(f1),
+        "dice_topk": float(np.mean(dice_topk_vals)) if dice_topk_vals else 0.0,
+        "iou_topk": float(np.mean(iou_topk_vals)) if iou_topk_vals else 0.0,
+    }
 
 
 def main() -> None:
@@ -147,6 +181,16 @@ def main() -> None:
     ap.add_argument("--base-channels", type=int, default=16)
     ap.add_argument("--num-layers", type=int, default=4)
     ap.add_argument("--dropout", type=float, default=0.0)
+    ap.add_argument(
+        "--loss",
+        type=str,
+        default="bce_pos_weight",
+        choices=["bce_pos_weight", "bce", "bce_dice"],
+        help="Training loss. `bce_pos_weight` matches legacy behavior; `bce_dice` is more robust under imbalance.",
+    )
+    ap.add_argument("--pos-weight-max", type=float, default=0.0, help="Clamp auto pos_weight to this value (0 => no clamp).")
+    ap.add_argument("--dice-weight", type=float, default=0.5, help="Weight for Dice loss when --loss=bce_dice.")
+    ap.add_argument("--eval-topk-ratio", type=float, default=0.005, help="Top-k ratio for dice_topk/iou_topk eval.")
     ap.add_argument("--output-dir", type=str, default="./outputs/train_saliency_cnn3d")
     args = ap.parse_args()
 
@@ -166,6 +210,10 @@ def main() -> None:
             base_channels=min(8, int(args.base_channels)),
             num_layers=min(2, int(args.num_layers)),
             dropout=float(args.dropout),
+            loss=str(args.loss),
+            pos_weight_max=float(args.pos_weight_max),
+            dice_weight=float(args.dice_weight),
+            eval_topk_ratio=float(args.eval_topk_ratio),
             output_dir=str(args.output_dir),
         )
     else:
@@ -186,6 +234,10 @@ def main() -> None:
             dropout=float(args.dropout),
             lr=float(args.lr),
             weight_decay=float(args.weight_decay),
+            loss=str(args.loss),
+            pos_weight_max=float(args.pos_weight_max),
+            dice_weight=float(args.dice_weight),
+            eval_topk_ratio=float(args.eval_topk_ratio),
             output_dir=str(args.output_dir),
         )
 
@@ -226,7 +278,10 @@ def main() -> None:
     # Global pos_weight for BCE to handle severe class imbalance.
     pos = float(y_train.sum().item())
     neg = float(y_train.numel() - y_train.sum().item())
-    pos_weight = torch.tensor([neg / max(pos, 1.0)], dtype=torch.float32, device=device)
+    auto_pos_weight = float(neg / max(pos, 1.0))
+    if float(cfg.pos_weight_max) and float(cfg.pos_weight_max) > 0:
+        auto_pos_weight = float(min(auto_pos_weight, float(cfg.pos_weight_max)))
+    pos_weight = torch.tensor([auto_pos_weight], dtype=torch.float32, device=device)
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction="mean")
     opt = torch.optim.AdamW(model.parameters(), lr=float(cfg.lr), weight_decay=float(cfg.weight_decay))
 
@@ -234,7 +289,7 @@ def main() -> None:
     val_dl = DataLoader(TensorDataset(X_val, y_val), batch_size=max(1, int(cfg.batch_size)), shuffle=False)
 
     history: List[Dict[str, Any]] = []
-    best_val_f1 = -1.0
+    best_val_score = -1e9
     best_path = Path(cfg.output_dir) / "saliency_cnn3d.pt"
 
     for epoch in range(int(cfg.epochs)):
@@ -245,13 +300,32 @@ def main() -> None:
             yb = yb.to(device)
             opt.zero_grad(set_to_none=True)
             logits = model(xb)
-            loss = loss_fn(logits, yb)
+            if str(cfg.loss) == "bce":
+                loss = nn.functional.binary_cross_entropy_with_logits(logits, yb, reduction="mean")
+            elif str(cfg.loss) == "bce_dice":
+                bce = nn.functional.binary_cross_entropy_with_logits(logits, yb, reduction="mean")
+                prob = torch.sigmoid(logits)
+                # Soft dice loss (per-sample) to handle extreme imbalance.
+                inter = (prob * yb).sum(dim=(1, 2, 3, 4))
+                denom = prob.sum(dim=(1, 2, 3, 4)) + yb.sum(dim=(1, 2, 3, 4))
+                dice = (2.0 * inter + 1e-6) / (denom + 1e-6)
+                dice_loss = 1.0 - dice.mean()
+                w = float(max(0.0, min(1.0, float(cfg.dice_weight))))
+                loss = (1.0 - w) * bce + w * dice_loss
+            else:
+                # Legacy: BCE with auto pos_weight.
+                loss = loss_fn(logits, yb)
             loss.backward()
             opt.step()
             losses.append(float(loss.item()))
 
-        train_eval = _eval(model, DataLoader(TensorDataset(X_train, y_train), batch_size=max(1, int(cfg.batch_size))), device)
-        val_eval = _eval(model, val_dl, device)
+        train_eval = _eval(
+            model,
+            DataLoader(TensorDataset(X_train, y_train), batch_size=max(1, int(cfg.batch_size))),
+            device,
+            topk_ratio=float(cfg.eval_topk_ratio),
+        )
+        val_eval = _eval(model, val_dl, device, topk_ratio=float(cfg.eval_topk_ratio))
         history.append(
             {
                 "epoch": int(epoch),
@@ -261,8 +335,10 @@ def main() -> None:
             }
         )
 
-        if float(val_eval["f1"]) > best_val_f1:
-            best_val_f1 = float(val_eval["f1"])
+        # Prefer dice_topk as the selection criterion (aligns with submission-style thresholding).
+        score = float(val_eval.get("dice_topk", 0.0))
+        if score > best_val_score:
+            best_val_score = float(score)
             save_saliency_cnn3d(str(best_path), model, extra={"meta": meta.to_dict(), "epoch": int(epoch)})
 
     report: Dict[str, Any] = {
@@ -271,7 +347,8 @@ def main() -> None:
         "val_stats": val["stats"],
         "pos_weight": float(pos_weight.detach().cpu().item()),
         "history": history,
-        "best_val_f1": float(best_val_f1),
+        "best_val_score": float(best_val_score),
+        "best_val_score_metric": "dice_topk",
         "weights_path": str(best_path),
     }
     out_json = Path(cfg.output_dir) / "train_saliency_cnn3d.json"
