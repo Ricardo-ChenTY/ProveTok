@@ -22,15 +22,19 @@
 - `docs/public_artifacts/provetok_method_cn.mmd`
 
 ```mermaid
-flowchart TB
+flowchart LR
 classDef data fill:#E0F2FE,stroke:#0369A1,stroke-width:1.4px,color:#0F172A;
 classDef bet fill:#EDE9FE,stroke:#6D28D9,stroke-width:1.4px,color:#0F172A;
 classDef gen fill:#ECFDF5,stroke:#047857,stroke-width:1.4px,color:#0F172A;
 classDef verify fill:#FEF3C7,stroke:#B45309,stroke-width:1.4px,color:#0F172A;
+classDef train fill:#FCE7F3,stroke:#BE185D,stroke-width:1.4px,color:#0F172A;
 classDef gate fill:#F8FAFC,stroke:#334155,stroke-width:1.6px,color:#0F172A;
 classDef artifact fill:#FFF7ED,stroke:#C2410C,stroke-width:1.4px,color:#0F172A;
+classDef note fill:#F1F5F9,stroke:#475569,stroke-width:1.2px,color:#0F172A;
 classDef terminal fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
 
+subgraph Main["ProveTok 方法主流程"]
+direction TB
 Start((输入：3D CT体数据 + 预算B<br/>B = B_enc + B_gen)):::data
 I1["I1 BET初始化 + TokenEncoder"]:::bet
 I2["I2 评分融合与Δ(c)估计<br/>lesionness/saliency + EvidenceHead"]:::bet
@@ -41,6 +45,8 @@ I5["I6 PCG解码<br/>frames + citations + q + refusal"]:::gen
 I6["I7 Verifier校验<br/>U1/O1/I1/M1"]:::verify
 G2{"I8 高严重issue且可继续？"}:::gate
 I7["I9 输出与评测审计<br/>text/trace/grounding/counterfactual"]:::artifact
+T4["T4 LLM训练阶段<br/>合同/拒答约束"]:::train
+end
 Done((方法一次推理完成)):::terminal
 
 Start --> I1 --> I2 --> G1
@@ -48,7 +54,27 @@ G1 -- 否 --> I3 --> I1
 G1 -- 是 --> I4 --> I5 --> I6 --> G2
 G2 -- 是 --> I2
 G2 -- 否 --> I7 --> Done
+
+subgraph Notes["旁注：常见疑问直答"]
+direction TB
+N3D["3D模型在哪里：I1-I3。<br/>作用：把体素变成token并打分，<br/>决定引用哪些空间证据。"]:::note
+NLLM["LLM在哪里：I6(推理) + T4(训练)。<br/>作用：生成结构化frame+文本，<br/>并学习合同/拒答策略。"]:::note
+NRef["为什么要refine：I2-I4循环。<br/>作用：把有限预算集中到高价值区域，<br/>不是盲目增加token数。"]:::note
+NVer["为什么要verifier：I7。<br/>作用：抓 unsupported/overclaim，<br/>决定是否继续细化。"]:::note
+end
+
+I2 -.-> N3D
+I5 -.-> NLLM
+T4 -.-> NLLM
+I3 -.-> NRef
+I6 -.-> NVer
 ```
+
+**常见疑问（超简版）**
+- `3D model`：负责“空间证据抽取与打分”，没有它就只剩文本匹配，grounding 指标无法成立。
+- `LLM`：在推理端生成 `frames+text`，在训练端学习 contract/refusal；不是替代 3D 证据，而是消费证据。
+- `refine loop`：用 `Δ(c)` 做预算分配，把算力投在最可能修复问题的区域。
+- `verifier`：把“看起来像对”变成可审计规则，失败就回到 refine，而不是直接放行。
 
 ## 1. Introduction
 ### 1.1 问题与动机

@@ -5,7 +5,7 @@
 ## 1) 方法总图
 
 ```mermaid
-flowchart TB
+flowchart LR
 
 classDef data fill:#E0F2FE,stroke:#0369A1,stroke-width:1.4px,color:#0F172A;
 classDef bet fill:#EDE9FE,stroke:#6D28D9,stroke-width:1.4px,color:#0F172A;
@@ -14,8 +14,11 @@ classDef verify fill:#FEF3C7,stroke:#B45309,stroke-width:1.4px,color:#0F172A;
 classDef train fill:#FCE7F3,stroke:#BE185D,stroke-width:1.4px,color:#0F172A;
 classDef gate fill:#F8FAFC,stroke:#334155,stroke-width:1.6px,color:#0F172A;
 classDef artifact fill:#FFF7ED,stroke:#C2410C,stroke-width:1.4px,color:#0F172A;
+classDef note fill:#F1F5F9,stroke:#475569,stroke-width:1.2px,color:#0F172A;
 classDef terminal fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
 
+subgraph Main["ProveTok 方法主流程"]
+direction TB
 Start((输入：3D CT体数据 + 预算B<br/>B = B_enc + B_gen)):::data
 
 subgraph Infer["A. 在线推理主链（方法本体）"]
@@ -52,6 +55,23 @@ I10 -- 否 --> I12 --> I13 --> Done((方法一次推理完成)):::terminal
 
 T1 --> T2 --> T3 --> T4 --> T5
 T5 -. 训练得到的参数与策略 .-> I8
+end
+
+subgraph Notes["旁注：每一步到底在干什么"]
+direction TB
+N3D["3D模型在 I2/I3：<br/>把体素区域编码成token并打分，<br/>决定哪些空间证据值得保留。"]:::note
+NRef["Refine 在 I4-I6：<br/>不是盲目加token，而是用Δ(c)<br/>把预算集中到高价值区域。"]:::note
+NLLM["LLM 在 I8 与 T4：<br/>I8=推理端生成结构化frame+文本；<br/>T4=训练端做合同/拒答约束。"]:::note
+NVer["Verifier 在 I9：<br/>检查 unsupported/overclaim 等错误，<br/>决定是否回到 refine 回路。"]:::note
+NOut["I12-I13 的产物：<br/>不仅有文本，还要有 citations/trace，<br/>并落到 grounding/counterfactual 指标。"]:::note
+end
+
+I2 -.-> N3D
+I4 -.-> NRef
+I8 -.-> NLLM
+T4 -.-> NLLM
+I9 -.-> NVer
+I13 -.-> NOut
 ```
 
 ## 2) 每一步作用（对应代码）
@@ -77,3 +97,11 @@ T5 -. 训练得到的参数与策略 .-> I8
 2. **证据如何绑定到文字**：I7~I8 把 token 证据强绑定到每个 frame 的 citation。  
 3. **可信性怎么保证**：I9~I11 通过 verifier+refine 循环抑制 unsupported/overclaim。  
 4. **为什么可审计**：I12~I13 输出结构化 trace 并可复算到 grounding/counterfactual 指标。  
+
+## 4) 你最关心的两个问题（直答）
+
+1. **我们为什么需要 3D 模型？**  
+   因为任务要做的是“3D 空间证据绑定”，不是纯文本生成。3D 模型在 `I2/I3` 把体素区域转成 token 并打分，直接决定 citations 指向哪里；没有这一步，后面的 grounding 指标会塌。
+
+2. **LLM 在哪里，负责什么？**  
+   LLM 在 `I8`（推理时生成 frame+文本）和 `T4`（训练时合同/拒答约束）。不启用 LLM 时，系统仍可由 `PCGHead/ToyPCG` 跑通结构化输出与验证链路，但文本表达能力和合同泛化通常更弱。  
