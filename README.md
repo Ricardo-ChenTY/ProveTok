@@ -20,6 +20,8 @@
 完整版本（含逐步作用说明）：
 - `docs/public_artifacts/provetok_method_cn.md`
 - `docs/public_artifacts/provetok_method_cn.mmd`
+- `docs/public_artifacts/provetok_method_cn_detailed.md`（详细版：LLM 作用位展开）
+- `docs/public_artifacts/provetok_method_cn_detailed.mmd`
 
 ```mermaid
 flowchart TB
@@ -64,6 +66,9 @@ end
 
 Done -.-> N3D
 ```
+
+如果你主要卡在“LLM 到底在哪一步起作用”，直接看：
+- `docs/public_artifacts/provetok_method_cn_detailed.md`
 
 **常见疑问（超简版）**
 - `3D model`：负责“空间证据抽取与打分”，没有它就只剩文本匹配，grounding 指标无法成立。
