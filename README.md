@@ -17,116 +17,48 @@
 
 ## 项目方法流程图（中文）
 
-完整版本（含逐步作用说明）：
+对应文件：
 - `docs/public_artifacts/provetok_method_cn.md`
 - `docs/public_artifacts/provetok_method_cn.mmd`
-- `docs/public_artifacts/provetok_method_cn_detailed.md`（详细版：LLM 作用位展开）
-- `docs/public_artifacts/provetok_method_cn_detailed.mmd`
 
 ```mermaid
 flowchart TB
 classDef data fill:#E0F2FE,stroke:#0369A1,stroke-width:1.4px,color:#0F172A;
-classDef bet fill:#EDE9FE,stroke:#6D28D9,stroke-width:1.4px,color:#0F172A;
-classDef gen fill:#ECFDF5,stroke:#047857,stroke-width:1.4px,color:#0F172A;
-classDef verify fill:#FEF3C7,stroke:#B45309,stroke-width:1.4px,color:#0F172A;
-classDef train fill:#FCE7F3,stroke:#BE185D,stroke-width:1.4px,color:#0F172A;
-classDef gate fill:#F8FAFC,stroke:#334155,stroke-width:1.6px,color:#0F172A;
-classDef artifact fill:#FFF7ED,stroke:#C2410C,stroke-width:1.4px,color:#0F172A;
-classDef note fill:#F1F5F9,stroke:#475569,stroke-width:1.2px,color:#0F172A;
-classDef terminal fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
-
-Start((输入：3D CT体数据 + 预算B<br/>B = B_enc + B_gen)):::data
-I1["I1 BET初始化 + TokenEncoder"]:::bet
-I2["I2 评分融合与Δ(c)估计<br/>lesionness/saliency + EvidenceHead"]:::bet
-G1{"I3 预算到顶或Δ<ε？"}:::gate
-I3["I4 split c*并继续细化"]:::bet
-I4["I5 EvidenceGraph + constrained vocab"]:::gen
-I5["I6 PCG解码<br/>frames + citations + q + refusal"]:::gen
-I6["I7 Verifier校验<br/>U1/O1/I1/M1"]:::verify
-G2{"I8 高严重issue且可继续？"}:::gate
-I7["I9 输出与评测审计<br/>text/trace/grounding/counterfactual"]:::artifact
-Done((方法一次推理完成)):::terminal
-
-Start --> I1 --> I2 --> G1
-G1 -- 否 --> I3 --> I1
-G1 -- 是 --> I4 --> I5 --> I6 --> G2
-G2 -- 是 --> I2
-G2 -- 否 --> I7 --> Done
-T1["T1 数据与监督构建"]:::data --> T2["T2 M0/M1"]:::train --> T3["T3 M2"]:::train --> T4["T4 M3（LLM合同/拒答）"]:::train --> T5["T5 参数更新"]:::train
-T5 -. 训练得到参数 .-> I5
-
-subgraph Notes["旁注节点（回答常见疑问）"]
-direction LR
-N3D["3D模型：I1-I3<br/>体素→token并打分，决定空间证据。"]:::note
-NLLM["LLM：I6 + T4<br/>推理端生成，训练端学合同/拒答。"]:::note
-NRef["Refine：I2-I4循环<br/>用Δ(c)做预算分配。"]:::note
-NVer["Verifier：I7<br/>抓unsupported/overclaim并决定返工。"]:::note
-N3D --> NLLM --> NRef --> NVer
-end
-
-Done -.-> N3D
-```
-
-### 详细版（LLM 作用位展开）
-
-```mermaid
-flowchart TB
-classDef data fill:#E0F2FE,stroke:#0369A1,stroke-width:1.4px,color:#0F172A;
-classDef bet fill:#EDE9FE,stroke:#6D28D9,stroke-width:1.4px,color:#0F172A;
+classDef core fill:#EDE9FE,stroke:#6D28D9,stroke-width:1.4px,color:#0F172A;
 classDef gen fill:#ECFDF5,stroke:#047857,stroke-width:1.4px,color:#0F172A;
 classDef llm fill:#DCFCE7,stroke:#15803D,stroke-width:1.6px,color:#0F172A;
-classDef verify fill:#FEF3C7,stroke:#B45309,stroke-width:1.4px,color:#0F172A;
 classDef train fill:#FCE7F3,stroke:#BE185D,stroke-width:1.4px,color:#0F172A;
 classDef gate fill:#F8FAFC,stroke:#334155,stroke-width:1.6px,color:#0F172A;
-classDef artifact fill:#FFF7ED,stroke:#C2410C,stroke-width:1.4px,color:#0F172A;
-classDef note fill:#F1F5F9,stroke:#475569,stroke-width:1.2px,color:#0F172A;
-classDef terminal fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
+classDef out fill:#FFF7ED,stroke:#C2410C,stroke-width:1.4px,color:#0F172A;
 
-S0((输入：3D CT volume + 预算B<br/>B = B_enc + B_gen)):::data
-subgraph BET["A. BET证据构建（3D空间部分）"]
-direction TB
-B1["B1 初始cells"]:::bet --> B2["B2 TokenEncoder"]:::bet --> B3["B3 评分融合"]:::bet --> B4["B4 EvidenceHead Δ(c)"]:::bet --> BG{"B5 停机？"}:::gate
-BG -- 否 --> B6["B6 split c*"]:::bet --> B2
-end
-subgraph GEN["B. 生成与验证（文本/结构化部分）"]
-direction TB
-G0["G0 EvidenceGraph + constrained vocab"]:::gen --> GG{"G1 backend = toy/llama2"}:::gate
-GG -- toy --> G1["G2A PCGHead/ToyPCG"]:::gen --> G3["G3 frames + citations + q + refusal"]:::gen
-GG -- llama2 --> G2["G2B Llama2PCG + contract_mode"]:::llm --> G3
-G3 --> V1["G4 Verifier U1/O1/I1/M1"]:::verify --> VG{"G5 高严重issue且可继续？"}:::gate
-VG -- 是 --> B4
-VG -- 否 --> G4["G6 输出 text+trace+grounding/cf"]:::artifact --> End((方法推理完成)):::terminal
-end
-subgraph TRN["C. 训练阶段（M0→M3）"]
-direction TB
-T1["T1 M0/M1"]:::train --> T2["T2 M2"]:::train --> T3["T3 M3（LLM合同/拒答）"]:::train --> T4["T4 参数更新"]:::train
-end
-S0 --> B1
-T4 -.-> G1
-T4 -.-> G2
-subgraph NotesD["详细旁注"]
-direction LR
-ND1["3D模型核心在 B2/B3"]:::note --> ND2["LLM核心在 G2 + T3"]:::note --> ND3["backend 开关在 GG"]:::note --> ND4["审计回路在 V1→VG"]:::note
-end
-G2 -.-> ND2
-GG -.-> ND3
-V1 -.-> ND4
-B2 -.-> ND1
+S((输入：3D CT + 预算 B)):::data
+E1["3D证据编码<br/>TokenEncoder + score"]:::core
+E2["预算分配细化<br/>BET / Δ(c) refine"]:::core
+E3["证据约束<br/>EvidenceGraph + constrained vocab"]:::core
+G{"生成后端选择"}:::gate
+P["非LLM生成<br/>PCGHead / ToyPCG"]:::gen
+L["LLM生成<br/>Llama2PCG + contract"]:::llm
+V["Verifier审计<br/>U1/O1/I1/M1"]:::verify
+D{"审计通过?"}:::gate
+R["回到细化<br/>继续分配预算"]:::core
+O["输出结果<br/>frames + citations + refusal + text"]:::out
+M["评测与证明<br/>grounding / frame_f1 / counterfactual"]:::out
+T["训练 M0→M3<br/>更新参数与策略"]:::train
+
+S --> E1 --> E2 --> E3 --> G
+G -- 非LLM --> P --> V
+G -- LLM --> L --> V
+V --> D
+D -- 否 --> R --> E2
+D -- 是 --> O --> M
+T -. 支持推理 .-> E1
+T -. 支持推理 .-> P
+T -. 支持推理 .-> L
 ```
 
-如果你主要卡在“LLM 到底在哪一步起作用”，直接看：
-- `docs/public_artifacts/provetok_method_cn_detailed.md`
-
-**常见疑问（超简版）**
-- `3D model`：负责“空间证据抽取与打分”，没有它就只剩文本匹配，grounding 指标无法成立。
-- `LLM`：在推理端生成 `frames+text`，在训练端学习 contract/refusal；不是替代 3D 证据，而是消费证据。
-- `refine loop`：用 `Δ(c)` 做预算分配，把算力投在最可能修复问题的区域。
-- `verifier`：把“看起来像对”变成可审计规则，失败就回到 refine，而不是直接放行。
-
-**审稿人追问版（直接可答）**
-- 为什么 `+0.001` 也可能有意义：若在多预算/多seed下方向一致且 `Holm` 后仍显著，同时不牺牲 `unsupported` 与 `critical_miss_rate`，它可被定义为“稳定但小效应”；但不能直接宣称临床收益。
-- 什么时候不该 claim 有效：`CI` 跨 0、`Holm` 后不显著、仅在 silver 数据成立、或安全约束（`unsupported/refusal/miss-rate`）恶化时，都只能写成“趋势/探索性观察”。
-- oral 叙事怎么写更稳：把结论限定为“协议级可靠性提升”，并附失败案例与边界条件，避免把统计显著直接上升为临床显著。
+- 3D 模型作用在 `E1/E2`：把体素变成可审计证据并做预算细化。
+- LLM 作用在 `L`：作为生成后端消费证据，不替代证据链。
+- Verifier 作用在 `V`：不通过就回到 `E2`，保证可证明输出。
 
 ## 1. Introduction
 ### 1.1 问题与动机
