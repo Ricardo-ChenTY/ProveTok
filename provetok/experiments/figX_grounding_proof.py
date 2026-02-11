@@ -25,7 +25,7 @@ from ..eval.stats import bootstrap_mean_ci, bootstrap_quantile_ci, holm_bonferro
 from ..bet.allocator import PickPrefer
 from ..bet.refine_loop import run_refine_loop
 from ..models.lesionness_head import load_lesionness_head
-from ..models.saliency_cnn3d import load_saliency_cnn3d
+from ..models.saliency import load_saliency_model
 from ..pcg.generator import ToyPCG
 from ..pcg.schema_version import SCHEMA_VERSION
 from ..utils.artifact import build_artifact_meta, try_manifest_revision
@@ -508,7 +508,7 @@ def main() -> None:
     saliency_model = None
     saliency_device = torch.device(str(cfg.saliency_device or "cpu"))
     if cfg.saliency_weights:
-        saliency_model = load_saliency_cnn3d(cfg.saliency_weights, map_location="cpu")
+        saliency_model = load_saliency_model(cfg.saliency_weights, map_location="cpu")
         saliency_model = saliency_model.to(saliency_device).eval()
 
     def _preprocess_volume_for_saliency(vol: torch.Tensor) -> torch.Tensor:

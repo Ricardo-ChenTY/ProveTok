@@ -1,0 +1,56 @@
+flowchart TB
+
+classDef plan fill:#E8F1FF,stroke:#1D4ED8,stroke-width:1.5px,color:#0F172A;
+classDef exp fill:#E8FFF3,stroke:#059669,stroke-width:1.5px,color:#0F172A;
+classDef proof fill:#FFF3E8,stroke:#D97706,stroke-width:1.5px,color:#0F172A;
+classDef gate fill:#F8FAFC,stroke:#334155,stroke-width:1.5px,color:#0F172A;
+classDef loop fill:#FEF3C7,stroke:#B45309,stroke-width:1.2px,color:#0F172A;
+classDef end fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
+
+Start((开始<br/>明确目标与口径))
+
+subgraph L1["A. 计划与实现闭环（Plan ↔ Mohu）"]
+direction TB
+S1["S1 项目结构扫描<br/>识别代码入口、数据路径、依赖与docs状态"]:::plan
+S2["S2 plan↔mohu 同步<br/>生成/刷新未实现点与模糊点清单"]:::plan
+G1{"G1 mohu清单<br/>是否已清空？"}:::gate
+S3["S3 mohu逐条解决<br/>实现/澄清 + 必要验证闸门"]:::plan
+end
+
+subgraph L2["B. 实验与证据闭环（Ledger → Smoke → Full）"]
+direction TB
+S4["S4 实验台账维护<br/>更新 E####、命令、指标、资源预算"]:::exp
+S5["S5 数据资产准备<br/>构建/校验manifest，确保可复现"]:::exp
+S6["S6 训练3D空间模型<br/>CNN/UNet/ResUNet/VNet等"]:::exp
+S7["S7 外部gold本地验证<br/>verify_rexrank_manifest 对齐能力审计"]:::exp
+S8["S8 核心实验运行<br/>基线/消融/LLM合同实验"]:::exp
+G2{"G2 smoke<br/>是否全部通过？"}:::gate
+S9["S9 失败归因与修复<br/>仅修当前阻塞项后重跑"]:::loop
+S10["S10 full队列执行<br/>tmux + .rd_queue 日志/结果留痕"]:::exp
+G3{"G3 full<br/>是否全部通过？"}:::gate
+end
+
+subgraph L3["C. 证明与论文闭环（Proof → Plan）"]
+direction TB
+S11["S11 结果回填<br/>docs/results.md + docs/experiment.md"]:::proof
+S12["S12 claim可证性审计<br/>按plan逐条检查证据覆盖"]:::proof
+G4{"G4 所有claim<br/>是否可被证据支撑？"}:::gate
+S13["S13 更新plan（保留前后）<br/>回注未证实点并生成下一轮需求"]:::loop
+S14["S14 对外产出<br/>口头版材料/提交包/复现实验清单"]:::proof
+Done((闭环完成)):::end
+end
+
+Start --> S1
+S1 --> S2 --> G1
+G1 -- 否 --> S3 --> S2
+G1 -- 是 --> S4
+
+S4 --> S5 --> S6 --> S7 --> S8 --> G2
+G2 -- 否 --> S9 --> S4
+G2 -- 是 --> S10 --> G3
+G3 -- 否 --> S9
+G3 -- 是 --> S11
+
+S11 --> S12 --> G4
+G4 -- 否 --> S13 --> S1
+G4 -- 是 --> S14 --> Done

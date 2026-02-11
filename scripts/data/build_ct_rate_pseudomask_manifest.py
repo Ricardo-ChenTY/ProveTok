@@ -23,7 +23,7 @@ from provetok.data.manifest_schema import (
     load_manifest,
     save_manifest_jsonl,
 )
-from provetok.models.saliency_cnn3d import load_saliency_cnn3d
+from provetok.models.saliency import load_saliency_model
 
 
 def _preprocess_volume(vol: torch.Tensor) -> torch.Tensor:
@@ -143,7 +143,7 @@ def main() -> None:
         raise SystemExit("No records selected. Check --splits and --max-samples-per-split.")
 
     device = torch.device(str(args.device))
-    model = load_saliency_cnn3d(str(args.saliency_weights), map_location="cpu")
+    model = load_saliency_model(str(args.saliency_weights), map_location="cpu")
     model = model.to(device=device).eval()
 
     resize_shape = tuple(int(x) for x in args.resize_shape)
@@ -172,7 +172,7 @@ def main() -> None:
         d = r.to_dict()
         d["dataset"] = str(args.dataset_name or r.dataset)
         d["mask_path"] = str(out_mask)
-        d["pseudo_mask_source"] = "saliency_cnn3d"
+        d["pseudo_mask_source"] = "saliency_model"
         d["pseudo_mask_is_weak_label"] = True
         d["pseudo_mask_threshold"] = float(args.threshold)
         d["pseudo_mask_resize_shape"] = [int(x) for x in resize_shape]

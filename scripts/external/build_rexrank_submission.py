@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from provetok.models.saliency_cnn3d import load_saliency_cnn3d
+from provetok.models.saliency import load_saliency_model
 
 
 def _infer_ct_rate_path(name: str) -> str:
@@ -212,6 +212,52 @@ def _score_component_for_finding(
     return float(score)
 
 
+def _spatial_filter_union_mask(
+    union_zyx: np.ndarray,
+    *,
+    laterality: str,
+    loc: str,
+    use_laterality: bool,
+    use_superior_inferior: bool,
+    fallback_to_union_if_empty: bool,
+) -> np.ndarray:
+    """Heuristic per-finding mask from a single union mask via coarse spatial filtering.
+
+    This is a compromise between:
+    - `replicate` (too permissive, ignores finding text), and
+    - component assignment (can be brittle when lesions are split into many components).
+    """
+    if not union_zyx.any():
+        return union_zyx
+
+    z, y, x = (int(union_zyx.shape[0]), int(union_zyx.shape[1]), int(union_zyx.shape[2]))
+    out = union_zyx.copy()
+
+    if bool(use_laterality):
+        lat = str(laterality)
+        mid_x = int(x // 2)
+        if lat == "left":
+            out[:, :, mid_x:] = False
+        elif lat == "right":
+            out[:, :, :mid_x] = False
+
+    if bool(use_superior_inferior):
+        bucket = str(loc)
+        z0 = int(round(0.4 * float(z)))
+        z1 = int(round(0.6 * float(z)))
+        if bucket in ("RUL", "LUL"):
+            out[z0:, :, :] = False
+        elif bucket in ("RLL", "LLL"):
+            out[:z1, :, :] = False
+        elif bucket in ("RML", "lingula"):
+            out[:z0, :, :] = False
+            out[z1:, :, :] = False
+
+    if bool(fallback_to_union_if_empty) and (not out.any()):
+        return union_zyx
+    return out
+
+
 def _assign_components_greedy(
     findings: List[Tuple[int, str]],
     *,
@@ -252,6 +298,49 @@ def _assign_components_greedy(
         remaining = [c for c in remaining if int(c.cid) != int(best.cid)]
         if not remaining:
             remaining = list(comps)  # allow reuse once exhausted
+    return out
+
+
+def _assign_components_topk(
+    findings: List[Tuple[int, str]],
+    *,
+    comps: List[_Component],
+    lbl: np.ndarray,
+    vol_shape_zyx: Tuple[int, int, int],
+    use_laterality: bool,
+    use_superior_inferior: bool,
+    topk: int,
+) -> Dict[int, np.ndarray]:
+    if not findings:
+        return {}
+    if not comps:
+        return {int(i): np.zeros(vol_shape_zyx, dtype=bool) for i, _ in findings}
+
+    k = max(1, int(topk))
+    out: Dict[int, np.ndarray] = {}
+    for fi, sent in findings:
+        lat = _infer_laterality(sent)
+        loc = _infer_loc_bucket(sent)
+        scored = [
+            (
+                _score_component_for_finding(
+                    c,
+                    vol_shape_zyx=vol_shape_zyx,
+                    laterality=lat,
+                    loc=loc,
+                    use_laterality=bool(use_laterality),
+                    use_superior_inferior=bool(use_superior_inferior),
+                ),
+                c,
+            )
+            for c in comps
+        ]
+        scored.sort(key=lambda t: float(t[0]), reverse=True)
+        sel = [c for _, c in scored[:k]]
+        m = np.zeros(vol_shape_zyx, dtype=bool)
+        for c in sel:
+            m |= (lbl == int(c.cid))
+        out[int(fi)] = m
     return out
 
 
@@ -323,8 +412,19 @@ def main() -> None:
         "--assign",
         type=str,
         default="components_greedy",
-        choices=["replicate", "components_greedy"],
+        choices=["replicate", "components_greedy", "components_topk", "spatial_filter"],
         help="How to produce per-finding masks from the union saliency mask.",
+    )
+    ap.add_argument(
+        "--components-topk",
+        type=int,
+        default=1,
+        help="For assign=components_topk: number of components to union per finding.",
+    )
+    ap.add_argument(
+        "--spatial-filter-fallback-to-union",
+        action="store_true",
+        help="For assign=spatial_filter: if filtering empties the mask, fall back to the full union mask.",
     )
     ap.add_argument("--no-laterality", action="store_true", help="Disable laterality-based component assignment.")
     ap.add_argument("--no-superior-inferior", action="store_true", help="Disable upper/lower component assignment.")
@@ -372,7 +472,7 @@ def main() -> None:
     expected = len(rows)
 
     device = torch.device(str(args.device))
-    model = load_saliency_cnn3d(str(args.saliency_weights), map_location="cpu").to(device).eval()
+    model = load_saliency_model(str(args.saliency_weights), map_location="cpu").to(device).eval()
     resize_shape = tuple(int(x) for x in args.resize_shape)
     clip_hu = (float(args.clip_hu[0]), float(args.clip_hu[1]))
 
@@ -430,6 +530,28 @@ def main() -> None:
         lbl, comps = _components(m_up, connectivity=int(args.connectivity), min_size=int(args.min_size))
         if str(args.assign) == "replicate":
             per_finding = {int(fi): m_up for fi, _ in findings}
+        elif str(args.assign) == "spatial_filter":
+            per_finding = {
+                int(fi): _spatial_filter_union_mask(
+                    m_up,
+                    laterality=_infer_laterality(sent),
+                    loc=_infer_loc_bucket(sent),
+                    use_laterality=(not bool(args.no_laterality)),
+                    use_superior_inferior=(not bool(args.no_superior_inferior)),
+                    fallback_to_union_if_empty=bool(args.spatial_filter_fallback_to_union),
+                )
+                for fi, sent in findings
+            }
+        elif str(args.assign) == "components_topk":
+            per_finding = _assign_components_topk(
+                findings,
+                comps=comps,
+                lbl=lbl,
+                vol_shape_zyx=tuple(int(x) for x in m_up.shape),
+                use_laterality=(not bool(args.no_laterality)),
+                use_superior_inferior=(not bool(args.no_superior_inferior)),
+                topk=int(args.components_topk),
+            )
         else:
             per_finding = _assign_components_greedy(
                 findings,

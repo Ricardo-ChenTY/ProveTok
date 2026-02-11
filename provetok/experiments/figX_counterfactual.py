@@ -30,7 +30,7 @@ from ..baselines.tokenizers import FixedGridTokenizer
 from ..grid.cells import cell_bounds, parse_cell_id, root_cell
 from ..pcg.generator import ToyPCG
 from ..models.lesionness_head import load_lesionness_head
-from ..models.saliency_cnn3d import load_saliency_cnn3d
+from ..models.saliency import load_saliency_model
 from ..verifier import verify
 from ..eval.counterfactual import (
     drop_cited_tokens,
@@ -216,7 +216,7 @@ def run_counterfactual(config: CounterfactualConfig) -> Dict[str, Any]:
     saliency_model = None
     saliency_device = str(config.saliency_device or "cpu")
     if config.saliency_weights:
-        saliency_model = load_saliency_cnn3d(config.saliency_weights, map_location=saliency_device)
+        saliency_model = load_saliency_model(config.saliency_weights, map_location=saliency_device)
         saliency_model.to(device=saliency_device)
         saliency_model.eval()
 

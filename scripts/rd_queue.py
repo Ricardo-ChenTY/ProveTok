@@ -211,7 +211,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
 
 def _infer_output_dir(command: str) -> str:
-    """Best-effort parse for `--output-dir <path>` in a bash -lc command string."""
+    """Best-effort parse for `--output-dir <path>` / `--out-dir <path>` in a command string."""
     try:
         import shlex
 
@@ -221,7 +221,7 @@ def _infer_output_dir(command: str) -> str:
 
     out_dir = ""
     for i, t in enumerate(toks):
-        if t == "--output-dir" and i + 1 < len(toks):
+        if t in {"--output-dir", "--out-dir"} and i + 1 < len(toks):
             out_dir = toks[i + 1]
     return out_dir
 
@@ -301,6 +301,22 @@ def _extract_key_metrics(artifact_path: Path) -> str:
         if isinstance(best, (int, float)):
             return f"SaliencyCNN3D best_val_f1={best:.4f}"
         return "SaliencyCNN3D"
+
+    if name == "verify_rexrank_manifest.json":
+        by_split = d.get("by_split") or {}
+        split = "test" if "test" in by_split else ("val" if "val" in by_split else ("train" if "train" in by_split else ""))
+        srec = by_split.get(split) if split else None
+        if isinstance(srec, dict) and srec:
+            # Prefer the most informative method when multiple are present.
+            method = "components_topk" if "components_topk" in srec else ("replicate" if "replicate" in srec else next(iter(srec.keys())))
+            mrec = (srec.get(method) or {}).get("finding_weighted") or {}
+            if isinstance(mrec, dict):
+                dice = mrec.get("mean_dice")
+                hit = mrec.get("hit_rate_global_dice")
+                any_hit = mrec.get("hit_rate_any_intersection")
+                if isinstance(dice, (int, float)) and isinstance(hit, (int, float)) and isinstance(any_hit, (int, float)):
+                    return f"ReXrank {split} {method} dice={float(dice):.4f} hit@0.1={float(hit):.4f} hit_any={float(any_hit):.4f}"
+        return "ReXrank verify"
 
     if name == "fig3_results.json":
         regret = d.get("regret") or {}
@@ -533,6 +549,7 @@ def _write_results_md(*, root: Path, results_dir: Path) -> Path:
                 "fig2_raw_data.json",
                 "fig3_results.json",
                 "fig3_regret_sweep.json",
+                "verify_rexrank_manifest.json",
                 "latency_bench_baselines.json",
                 "baselines_curve_multiseed.json",
                 "baselines_multiseed.json",

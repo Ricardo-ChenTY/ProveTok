@@ -188,9 +188,9 @@ class SaliencyBETTokenizer(BaseTokenizer):
 
     def _get_saliency_model(self):
         if self._saliency_model is None:
-            from ..models.saliency_cnn3d import load_saliency_cnn3d
+            from ..models.saliency import load_saliency_model
 
-            self._saliency_model = load_saliency_cnn3d(self.saliency_weights, map_location="cpu").eval()
+            self._saliency_model = load_saliency_model(self.saliency_weights, map_location="cpu").eval()
         want = torch.device(self.saliency_device)
         if self._saliency_device != want:
             assert self._saliency_model is not None
@@ -333,9 +333,9 @@ class SaliencyTopKTokenizer(BaseTokenizer):
 
     def _get_saliency_model(self):
         if self._saliency_model is None:
-            from ..models.saliency_cnn3d import load_saliency_cnn3d
+            from ..models.saliency import load_saliency_model
 
-            self._saliency_model = load_saliency_cnn3d(self.saliency_weights, map_location="cpu").eval()
+            self._saliency_model = load_saliency_model(self.saliency_weights, map_location="cpu").eval()
         want = torch.device(self.saliency_device)
         if self._saliency_device != want:
             assert self._saliency_model is not None
@@ -449,9 +449,9 @@ class SaliencyCoverRefineTokenizer(BaseTokenizer):
 
     def _get_saliency_model(self):
         if self._saliency_model is None:
-            from ..models.saliency_cnn3d import load_saliency_cnn3d
+            from ..models.saliency import load_saliency_model
 
-            self._saliency_model = load_saliency_cnn3d(self.saliency_weights, map_location="cpu").eval()
+            self._saliency_model = load_saliency_model(self.saliency_weights, map_location="cpu").eval()
         want = torch.device(self.saliency_device)
         if self._saliency_device != want:
             assert self._saliency_model is not None

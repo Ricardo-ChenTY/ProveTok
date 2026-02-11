@@ -142,6 +142,20 @@ def main() -> None:
     ap.add_argument("--lesionness-weights", type=str, default="", help="Optional lesionness_head.pt for provetok_lesionness.")
     ap.add_argument("--lesionness-device", type=str, default="cpu")
     ap.add_argument("--lesionness-score-level-power", type=float, default=0.0)
+    ap.add_argument("--saliency-weights", type=str, default="", help="Optional saliency weights for saliency-driven tokenizers.")
+    ap.add_argument("--saliency-device", type=str, default="cpu")
+    ap.add_argument(
+        "--saliency-score-reduce",
+        type=str,
+        default="max",
+        help="How to reduce voxel saliency to cell scores (max|mean|pXX).",
+    )
+    ap.add_argument(
+        "--saliency-score-level-power",
+        type=float,
+        default=0.0,
+        help="Multiply saliency-derived scores by (level+1)^p to favor finer cells when selecting citations.",
+    )
     ap.add_argument("--no-text-metrics", action="store_true", help="Disable BLEU/ROUGE metrics (faster).")
     ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--resume", action="store_true")
@@ -207,6 +221,10 @@ def main() -> None:
                     lesionness_weights=str(args.lesionness_weights),
                     lesionness_device=str(args.lesionness_device),
                     lesionness_score_level_power=float(args.lesionness_score_level_power),
+                    saliency_weights=str(args.saliency_weights),
+                    saliency_device=str(args.saliency_device),
+                    saliency_score_reduce=str(args.saliency_score_reduce),
+                    saliency_score_level_power=float(args.saliency_score_level_power),
                     compute_text_metrics=(not bool(args.no_text_metrics)),
                 )
                 pending.append(

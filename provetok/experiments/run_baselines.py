@@ -744,6 +744,11 @@ def main() -> None:
     ap.add_argument("--ct2rep-strong-weights", type=str, default="", help="Optional path to ct2rep_strong.pt (paper-grade baseline).")
     ap.add_argument("--ct2rep-strong-device", type=str, default="cpu")
     ap.add_argument("--no-text-metrics", action="store_true", help="Disable BLEU/ROUGE computation.")
+    ap.add_argument(
+        "--resume",
+        action="store_true",
+        help="No-op flag for docs/rd_queue compatibility (run_baselines is stateless).",
+    )
     args = ap.parse_args()
 
     seed_list = list(args.seeds) if args.seeds is not None else [int(args.seed)]

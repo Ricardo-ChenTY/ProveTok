@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from provetok.models.saliency_cnn3d import load_saliency_cnn3d
+from provetok.models.saliency import load_saliency_model
 
 
 GLOBAL_HIT_THR_DEFAULT = 0.1
@@ -204,6 +204,52 @@ def _score_component_for_finding(
     return float(score)
 
 
+def _spatial_filter_union_mask(
+    union_zyx: np.ndarray,
+    *,
+    laterality: str,
+    loc: str,
+    use_laterality: bool,
+    use_superior_inferior: bool,
+    fallback_to_union_if_empty: bool,
+) -> np.ndarray:
+    """Heuristic per-finding mask from a single union mask via coarse spatial filtering.
+
+    This is a compromise between:
+    - `replicate` (too permissive, ignores finding text), and
+    - component assignment (can be brittle when lesions are split into many components).
+    """
+    if not union_zyx.any():
+        return union_zyx
+
+    z, y, x = (int(union_zyx.shape[0]), int(union_zyx.shape[1]), int(union_zyx.shape[2]))
+    out = union_zyx.copy()
+
+    if bool(use_laterality):
+        lat = str(laterality)
+        mid_x = int(x // 2)
+        if lat == "left":
+            out[:, :, mid_x:] = False
+        elif lat == "right":
+            out[:, :, :mid_x] = False
+
+    if bool(use_superior_inferior):
+        bucket = str(loc)
+        z0 = int(round(0.4 * float(z)))
+        z1 = int(round(0.6 * float(z)))
+        if bucket in ("RUL", "LUL"):
+            out[z0:, :, :] = False
+        elif bucket in ("RLL", "LLL"):
+            out[:z1, :, :] = False
+        elif bucket in ("RML", "lingula"):
+            out[:z0, :, :] = False
+            out[z1:, :, :] = False
+
+    if bool(fallback_to_union_if_empty) and (not out.any()):
+        return union_zyx
+    return out
+
+
 def _assign_components_greedy(
     findings: List[Tuple[int, str]],
     *,
@@ -247,6 +293,55 @@ def _assign_components_greedy(
     return out
 
 
+def _assign_components_topk(
+    findings: List[Tuple[int, str]],
+    *,
+    comps: List[_Component],
+    lbl: np.ndarray,
+    vol_shape_zyx: Tuple[int, int, int],
+    use_laterality: bool,
+    use_superior_inferior: bool,
+    topk: int,
+) -> Dict[int, np.ndarray]:
+    """Assign up to Top-K connected components to each finding (unioned).
+
+    This is a simple robustness baseline against the "one component per finding"
+    assumption in `components_greedy` (which can be brittle for multi-focal
+    findings or noisy component splitting).
+    """
+    if not findings:
+        return {}
+    if not comps:
+        return {int(i): np.zeros(vol_shape_zyx, dtype=bool) for i, _ in findings}
+
+    k = max(1, int(topk))
+    out: Dict[int, np.ndarray] = {}
+    for fi, sent in findings:
+        lat = _infer_laterality(sent)
+        loc = _infer_loc_bucket(sent)
+        scored = [
+            (
+                _score_component_for_finding(
+                    c,
+                    vol_shape_zyx=vol_shape_zyx,
+                    laterality=lat,
+                    loc=loc,
+                    use_laterality=bool(use_laterality),
+                    use_superior_inferior=bool(use_superior_inferior),
+                ),
+                c,
+            )
+            for c in comps
+        ]
+        scored.sort(key=lambda t: float(t[0]), reverse=True)
+        sel = [c for _, c in scored[:k]]
+        m = np.zeros(vol_shape_zyx, dtype=bool)
+        for c in sel:
+            m |= (lbl == int(c.cid))
+        out[int(fi)] = m
+    return out
+
+
 def _compute_iou(gt: np.ndarray, pred: np.ndarray) -> float:
     inter = np.logical_and(gt, pred).sum()
     union = np.logical_or(gt, pred).sum()
@@ -285,12 +380,12 @@ def _load_findings_map(dataset_json: Path) -> Dict[str, Dict[str, Any]]:
 def _predict_union_mask_zyx(
     vol_path: Path,
     *,
-    model: torch.nn.Module,
+    models: Sequence[torch.nn.Module],
     device: torch.device,
     resize_shape: Tuple[int, int, int],
     clip_hu: Tuple[float, float],
     mask_ratio: float,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     # Load provider-native volume: (X,Y,Z)
     ct_img = nib.load(str(vol_path))
     ct_arr = np.asanyarray(ct_img.dataobj).astype(np.float32, copy=False)
@@ -306,19 +401,86 @@ def _predict_union_mask_zyx(
         align_corners=False,
     )[0, 0]  # (d,h,w)
 
+    if not models:
+        raise ValueError("models is empty")
     with torch.no_grad():
-        prob_small = model.predict_proba(x_small.unsqueeze(0).unsqueeze(0).to(device=device))[0, 0].detach().cpu()
+        x_in = x_small.unsqueeze(0).unsqueeze(0).to(device=device)
+        probs: List[torch.Tensor] = []
+        for m in models:
+            probs.append(m.predict_proba(x_in)[0, 0].detach().cpu())
+        prob_small = torch.stack(probs, dim=0).mean(dim=0)
     prob_np = prob_small.numpy()
     mask_small = _topk_binary_mask(prob_np, ratio=float(mask_ratio), min_voxels=1)
 
     # Upsample binary mask back to original internal (Z,Y,X).
+    prob_up = F.interpolate(
+        prob_small.unsqueeze(0).unsqueeze(0),
+        size=tuple(int(x) for x in vol_t.shape),
+        mode="trilinear",
+        align_corners=False,
+    )[0, 0].numpy()
     m_up = F.interpolate(
         torch.from_numpy(mask_small.astype(np.float32)).unsqueeze(0).unsqueeze(0),
         size=tuple(int(x) for x in vol_t.shape),
         mode="nearest",
     )[0, 0].numpy() > 0.5
 
-    return m_up.astype(bool), ct_img.affine
+    return m_up.astype(bool), prob_up.astype(np.float32), ct_img.affine
+
+
+def _effective_mask_ratio(
+    *,
+    base_ratio: float,
+    num_findings: int,
+    adaptive: bool,
+    ref_findings: float,
+    power: float,
+    min_ratio: float,
+    max_ratio: float,
+) -> float:
+    r = float(base_ratio)
+    if bool(adaptive):
+        f = max(1.0, float(num_findings))
+        ref = max(1.0, float(ref_findings))
+        p = float(power)
+        scale = float((f / ref) ** p)
+        r = float(r * scale)
+    lo = max(0.0, float(min_ratio))
+    hi = max(lo, float(max_ratio))
+    return float(max(lo, min(hi, r)))
+
+
+def _spatial_prior_map(
+    shape_zyx: Tuple[int, int, int],
+    *,
+    laterality: str,
+    loc: str,
+    use_laterality: bool,
+    use_superior_inferior: bool,
+) -> np.ndarray:
+    z, y, x = (int(shape_zyx[0]), int(shape_zyx[1]), int(shape_zyx[2]))
+    xx = np.linspace(0.0, 1.0, num=max(x, 1), endpoint=True, dtype=np.float32)
+    zz = np.linspace(0.0, 1.0, num=max(z, 1), endpoint=True, dtype=np.float32)
+
+    wx = np.ones((1, 1, x), dtype=np.float32)
+    if use_laterality:
+        lat = str(laterality)
+        if lat == "left":
+            wx = np.where(xx[None, None, :] < 0.5, 1.3, 0.7).astype(np.float32)
+        elif lat == "right":
+            wx = np.where(xx[None, None, :] >= 0.5, 1.3, 0.7).astype(np.float32)
+
+    wz = np.ones((z, 1, 1), dtype=np.float32)
+    if use_superior_inferior:
+        bucket = str(loc)
+        if bucket in ("RUL", "LUL"):
+            wz = np.where(zz[:, None, None] < 0.4, 1.2, 0.8).astype(np.float32)
+        elif bucket in ("RLL", "LLL"):
+            wz = np.where(zz[:, None, None] > 0.6, 1.2, 0.8).astype(np.float32)
+        elif bucket in ("RML", "lingula"):
+            wz = np.where((zz[:, None, None] >= 0.4) & (zz[:, None, None] <= 0.6), 1.2, 0.8).astype(np.float32)
+
+    return (wz * wx).astype(np.float32)
 
 
 def _save_pred_4d_nifti(pred_path: Path, *, per_finding_zyx: Dict[int, np.ndarray], f: int, affine: np.ndarray) -> None:
@@ -405,20 +567,46 @@ def main() -> int:
     ap.add_argument("--splits", type=str, nargs="+", default=["val", "test"])
     ap.add_argument("--out-dir", type=str, default="outputs/E0192-rexrank-manifest-verify")
     ap.add_argument(
+        "--resume",
+        action="store_true",
+        help="No-op flag for docs/rd_queue compatibility (resume is enabled automatically if out-dir already has a report).",
+    )
+    ap.add_argument(
         "--saliency-weights",
         type=str,
-        default="outputs/E0155-train_saliency_cnn3d_100g/saliency_cnn3d.pt",
-        help="SaliencyCNN3D weights for union-mask prediction.",
+        nargs="+",
+        default=["outputs/E0155-train_saliency_cnn3d_100g/saliency_cnn3d.pt"],
+        help="One or more saliency model weight paths; if multiple, probabilities are averaged.",
     )
     ap.add_argument("--device", type=str, default=("cuda" if torch.cuda.is_available() else "cpu"))
     ap.add_argument("--resize-shape", type=int, nargs=3, default=[64, 64, 64])
     ap.add_argument("--clip-hu", type=float, nargs=2, default=[-1000.0, 1000.0])
     ap.add_argument("--mask-ratio", type=float, default=0.005)
+    ap.add_argument(
+        "--adaptive-mask-by-findings",
+        action="store_true",
+        help="Scale mask_ratio per case using #findings: ratio *= (num_findings/ref_findings)^power.",
+    )
+    ap.add_argument("--mask-ratio-ref-findings", type=float, default=3.0, help="Reference finding count for adaptive mask ratio.")
+    ap.add_argument("--mask-ratio-power", type=float, default=1.0, help="Power for adaptive ratio scaling.")
+    ap.add_argument("--mask-ratio-min", type=float, default=0.001, help="Lower clamp for effective mask ratio.")
+    ap.add_argument("--mask-ratio-max", type=float, default=0.10, help="Upper clamp for effective mask ratio.")
     ap.add_argument("--min-size", type=int, default=50)
     ap.add_argument("--connectivity", type=int, default=2, choices=[1, 2, 3])
     ap.add_argument("--global-hit-thr", type=float, default=GLOBAL_HIT_THR_DEFAULT)
     ap.add_argument("--no-laterality", action="store_true")
     ap.add_argument("--no-superior-inferior", action="store_true")
+    ap.add_argument(
+        "--spatial-filter-fallback-to-union",
+        action="store_true",
+        help="For method=spatial_filter: if filtering empties the mask, fall back to the full union mask.",
+    )
+    ap.add_argument(
+        "--components-topk",
+        type=int,
+        default=1,
+        help="For method=components_topk: number of components to union per finding.",
+    )
     ap.add_argument("--max-cases", type=int, default=0, help="Optional cap per split (debug).")
     ap.add_argument("--save-preds", action="store_true", help="Also write predicted 4D masks under <out-dir>/pred/...")
     ap.add_argument(
@@ -426,7 +614,7 @@ def main() -> int:
         type=str,
         nargs="+",
         default=["components_greedy"],
-        choices=["components_greedy", "replicate"],
+        choices=["components_greedy", "components_topk", "replicate", "spatial_filter", "prob_spatial_topk"],
         help="Prediction mapping from union mask to per-finding channels.",
     )
     args = ap.parse_args()
@@ -467,7 +655,10 @@ def main() -> int:
             existing_cases = []
 
     device = torch.device(str(args.device))
-    model = load_saliency_cnn3d(str(args.saliency_weights), map_location="cpu").to(device).eval()
+    weight_paths = [str(Path(w).resolve()) for w in (args.saliency_weights or [])]
+    if not weight_paths:
+        raise SystemExit("--saliency-weights must provide at least one weights path")
+    models = [load_saliency_model(w, map_location="cpu").to(device).eval() for w in weight_paths]
     resize_shape = tuple(int(x) for x in args.resize_shape)
     clip_hu = (float(args.clip_hu[0]), float(args.clip_hu[1]))
 
@@ -528,20 +719,28 @@ def main() -> int:
             continue
 
         try:
-            union_zyx, affine = _predict_union_mask_zyx(
-                vol_path,
-                model=model,
-                device=device,
-                resize_shape=resize_shape,
-                clip_hu=clip_hu,
-                mask_ratio=float(args.mask_ratio),
-            )
-
             gt_img = nib.load(str(mask_path))
             gt = np.asanyarray(gt_img.dataobj)
             if gt.ndim != 4:
                 raise ValueError(f"Expected 4D GT mask, got {gt.shape}")
             f = int(gt.shape[0])
+            eff_ratio = _effective_mask_ratio(
+                base_ratio=float(args.mask_ratio),
+                num_findings=int(f),
+                adaptive=bool(args.adaptive_mask_by_findings),
+                ref_findings=float(args.mask_ratio_ref_findings),
+                power=float(args.mask_ratio_power),
+                min_ratio=float(args.mask_ratio_min),
+                max_ratio=float(args.mask_ratio_max),
+            )
+            union_zyx, prob_zyx, affine = _predict_union_mask_zyx(
+                vol_path,
+                models=models,
+                device=device,
+                resize_shape=resize_shape,
+                clip_hu=clip_hu,
+                mask_ratio=float(eff_ratio),
+            )
 
             # Gather findings text if available.
             entry = findings_map.get(rex_name) or {}
@@ -554,6 +753,45 @@ def main() -> int:
             for m in methods:
                 if m == "replicate":
                     per_method[m] = {int(fi): union_zyx for fi, _ in findings}
+                elif m == "spatial_filter":
+                    pf: Dict[int, np.ndarray] = {}
+                    for fi, sent in findings:
+                        lat = _infer_laterality(sent)
+                        loc = _infer_loc_bucket(sent)
+                        pf[int(fi)] = _spatial_filter_union_mask(
+                            union_zyx,
+                            laterality=lat,
+                            loc=loc,
+                            use_laterality=(not bool(args.no_laterality)),
+                            use_superior_inferior=(not bool(args.no_superior_inferior)),
+                            fallback_to_union_if_empty=bool(args.spatial_filter_fallback_to_union),
+                        )
+                    per_method[m] = pf
+                elif m == "components_topk":
+                    per_method[m] = _assign_components_topk(
+                        findings,
+                        comps=comps,
+                        lbl=lbl,
+                        vol_shape_zyx=tuple(int(x) for x in union_zyx.shape),
+                        use_laterality=(not bool(args.no_laterality)),
+                        use_superior_inferior=(not bool(args.no_superior_inferior)),
+                        topk=int(args.components_topk),
+                    )
+                elif m == "prob_spatial_topk":
+                    pf: Dict[int, np.ndarray] = {}
+                    for fi, sent in findings:
+                        lat = _infer_laterality(sent)
+                        loc = _infer_loc_bucket(sent)
+                        prior = _spatial_prior_map(
+                            tuple(int(x) for x in prob_zyx.shape),
+                            laterality=lat,
+                            loc=loc,
+                            use_laterality=(not bool(args.no_laterality)),
+                            use_superior_inferior=(not bool(args.no_superior_inferior)),
+                        )
+                        score = (prob_zyx * prior).astype(np.float32)
+                        pf[int(fi)] = _topk_binary_mask(score, ratio=float(eff_ratio), min_voxels=1)
+                    per_method[m] = pf
                 else:
                     per_method[m] = _assign_components_greedy(
                         findings,
@@ -579,6 +817,7 @@ def main() -> int:
                     "volume_path": str(vol_path),
                     "mask_path": str(mask_path),
                     "num_findings": int(f),
+                    "effective_mask_ratio": float(eff_ratio),
                     "metrics": metrics_by_method,
                 }
             )
@@ -697,14 +936,24 @@ def main() -> int:
             "started_at_utc": started_at_utc,
             "elapsed_min": float(elapsed / 60.0),
             "device": str(device),
-            "saliency_weights": str(Path(args.saliency_weights).resolve()),
+            "saliency_weights": weight_paths,
             "resize_shape": list(resize_shape),
             "clip_hu": list(clip_hu),
             "mask_ratio": float(args.mask_ratio),
+            "adaptive_mask_by_findings": bool(args.adaptive_mask_by_findings),
+            "mask_ratio_ref_findings": float(args.mask_ratio_ref_findings),
+            "mask_ratio_power": float(args.mask_ratio_power),
+            "mask_ratio_min": float(args.mask_ratio_min),
+            "mask_ratio_max": float(args.mask_ratio_max),
             "min_size": int(args.min_size),
             "connectivity": int(args.connectivity),
             "global_hit_thr": float(args.global_hit_thr),
             "methods": methods,
+            "components_topk": int(args.components_topk),
+            "no_laterality": bool(args.no_laterality),
+            "no_superior_inferior": bool(args.no_superior_inferior),
+            "spatial_filter_fallback_to_union": bool(args.spatial_filter_fallback_to_union),
+            "max_cases": int(args.max_cases),
             "save_preds": bool(args.save_preds),
         },
         "dataset": {

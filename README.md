@@ -15,6 +15,53 @@
 - LaTeX 论文草稿（NeurIPS-style）：`paper/`（入口 `paper/main.tex`，已生成 `paper/main.pdf` 便于快速浏览；正式投稿请替换为官方 NeurIPS style files）。
 - 写作范式拆解与模板：`docs/writing_refs/`（对标论文的结构/图表套路 + 可复用段落模板）。
 
+## 项目工作流（中文流程图）
+
+完整版本（含逐步作用说明）：
+- `docs/public_artifacts/provetok_workflow_cn.md`
+- `docs/public_artifacts/provetok_workflow_cn.mmd`
+
+```mermaid
+flowchart TB
+classDef plan fill:#E8F1FF,stroke:#1D4ED8,stroke-width:1.5px,color:#0F172A;
+classDef exp fill:#E8FFF3,stroke:#059669,stroke-width:1.5px,color:#0F172A;
+classDef proof fill:#FFF3E8,stroke:#D97706,stroke-width:1.5px,color:#0F172A;
+classDef gate fill:#F8FAFC,stroke:#334155,stroke-width:1.5px,color:#0F172A;
+classDef loop fill:#FEF3C7,stroke:#B45309,stroke-width:1.2px,color:#0F172A;
+classDef end fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
+
+Start((开始<br/>明确目标与口径))
+S1["S1 项目结构扫描"]:::plan
+S2["S2 plan↔mohu 同步"]:::plan
+G1{"G1 mohu是否清空"}:::gate
+S3["S3 mohu逐条解决（实现+验证）"]:::plan
+S4["S4 实验台账维护（E####）"]:::exp
+S5["S5 数据资产准备（manifest）"]:::exp
+S6["S6 训练3D空间模型"]:::exp
+S7["S7 外部gold本地验证"]:::exp
+S8["S8 核心实验运行"]:::exp
+G2{"G2 smoke是否通过"}:::gate
+S9["S9 失败归因与修复"]:::loop
+S10["S10 full队列执行"]:::exp
+G3{"G3 full是否通过"}:::gate
+S11["S11 结果回填 docs"]:::proof
+S12["S12 claim可证性审计"]:::proof
+G4{"G4 claim是否都可证明"}:::gate
+S13["S13 更新plan并回到下一轮"]:::loop
+S14["S14 对外产出（oral/提交）"]:::proof
+Done((闭环完成)):::end
+
+Start --> S1 --> S2 --> G1
+G1 -- 否 --> S3 --> S2
+G1 -- 是 --> S4 --> S5 --> S6 --> S7 --> S8 --> G2
+G2 -- 否 --> S9 --> S4
+G2 -- 是 --> S10 --> G3
+G3 -- 否 --> S9
+G3 -- 是 --> S11 --> S12 --> G4
+G4 -- 否 --> S13 --> S1
+G4 -- 是 --> S14 --> Done
+```
+
 ## 1. Introduction
 ### 1.1 问题与动机
 在医学场景中，报告生成最危险的失败不是“不流畅”，而是“写了结论却找不到证据”或“证据不足仍过度断言”。当计算预算受限时，grounding 不是附加可视化，而是一个资源分配问题：哪些体素区域值得被编码成 token，哪些句子必须引用这些 token，哪些情况下应该拒答并留下可复核的 trace。现有方法常把 citation/grounding 当作后验解释，把 refusal 当作后处理阈值，从而难以在同一协议里同时约束 latency、unsupported、overclaim 与 miss-rate。
