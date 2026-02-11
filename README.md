@@ -67,6 +67,53 @@ end
 Done -.-> N3D
 ```
 
+### 详细版（LLM 作用位展开）
+
+```mermaid
+flowchart TB
+classDef data fill:#E0F2FE,stroke:#0369A1,stroke-width:1.4px,color:#0F172A;
+classDef bet fill:#EDE9FE,stroke:#6D28D9,stroke-width:1.4px,color:#0F172A;
+classDef gen fill:#ECFDF5,stroke:#047857,stroke-width:1.4px,color:#0F172A;
+classDef llm fill:#DCFCE7,stroke:#15803D,stroke-width:1.6px,color:#0F172A;
+classDef verify fill:#FEF3C7,stroke:#B45309,stroke-width:1.4px,color:#0F172A;
+classDef train fill:#FCE7F3,stroke:#BE185D,stroke-width:1.4px,color:#0F172A;
+classDef gate fill:#F8FAFC,stroke:#334155,stroke-width:1.6px,color:#0F172A;
+classDef artifact fill:#FFF7ED,stroke:#C2410C,stroke-width:1.4px,color:#0F172A;
+classDef note fill:#F1F5F9,stroke:#475569,stroke-width:1.2px,color:#0F172A;
+classDef terminal fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
+
+S0((输入：3D CT volume + 预算B<br/>B = B_enc + B_gen)):::data
+subgraph BET["A. BET证据构建（3D空间部分）"]
+direction TB
+B1["B1 初始cells"]:::bet --> B2["B2 TokenEncoder"]:::bet --> B3["B3 评分融合"]:::bet --> B4["B4 EvidenceHead Δ(c)"]:::bet --> BG{"B5 停机？"}:::gate
+BG -- 否 --> B6["B6 split c*"]:::bet --> B2
+end
+subgraph GEN["B. 生成与验证（文本/结构化部分）"]
+direction TB
+G0["G0 EvidenceGraph + constrained vocab"]:::gen --> GG{"G1 backend = toy/llama2"}:::gate
+GG -- toy --> G1["G2A PCGHead/ToyPCG"]:::gen --> G3["G3 frames + citations + q + refusal"]:::gen
+GG -- llama2 --> G2["G2B Llama2PCG + contract_mode"]:::llm --> G3
+G3 --> V1["G4 Verifier U1/O1/I1/M1"]:::verify --> VG{"G5 高严重issue且可继续？"}:::gate
+VG -- 是 --> B4
+VG -- 否 --> G4["G6 输出 text+trace+grounding/cf"]:::artifact --> End((方法推理完成)):::terminal
+end
+subgraph TRN["C. 训练阶段（M0→M3）"]
+direction TB
+T1["T1 M0/M1"]:::train --> T2["T2 M2"]:::train --> T3["T3 M3（LLM合同/拒答）"]:::train --> T4["T4 参数更新"]:::train
+end
+S0 --> B1
+T4 -.-> G1
+T4 -.-> G2
+subgraph NotesD["详细旁注"]
+direction LR
+ND1["3D模型核心在 B2/B3"]:::note --> ND2["LLM核心在 G2 + T3"]:::note --> ND3["backend 开关在 GG"]:::note --> ND4["审计回路在 V1→VG"]:::note
+end
+G2 -.-> ND2
+GG -.-> ND3
+V1 -.-> ND4
+B2 -.-> ND1
+```
+
 如果你主要卡在“LLM 到底在哪一步起作用”，直接看：
 - `docs/public_artifacts/provetok_method_cn_detailed.md`
 
