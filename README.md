@@ -28,7 +28,7 @@ classDef exp fill:#E8FFF3,stroke:#059669,stroke-width:1.5px,color:#0F172A;
 classDef proof fill:#FFF3E8,stroke:#D97706,stroke-width:1.5px,color:#0F172A;
 classDef gate fill:#F8FAFC,stroke:#334155,stroke-width:1.5px,color:#0F172A;
 classDef loop fill:#FEF3C7,stroke:#B45309,stroke-width:1.2px,color:#0F172A;
-classDef end fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
+classDef terminal fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
 
 Start((开始<br/>明确目标与口径))
 S1["S1 项目结构扫描"]:::plan
@@ -49,7 +49,7 @@ S12["S12 claim可证性审计"]:::proof
 G4{"G4 claim是否都可证明"}:::gate
 S13["S13 更新plan并回到下一轮"]:::loop
 S14["S14 对外产出（oral/提交）"]:::proof
-Done((闭环完成)):::end
+Done((闭环完成)):::terminal
 
 Start --> S1 --> S2 --> G1
 G1 -- 否 --> S3 --> S2

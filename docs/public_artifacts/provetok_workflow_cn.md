@@ -12,7 +12,7 @@ classDef exp fill:#E8FFF3,stroke:#059669,stroke-width:1.5px,color:#0F172A;
 classDef proof fill:#FFF3E8,stroke:#D97706,stroke-width:1.5px,color:#0F172A;
 classDef gate fill:#F8FAFC,stroke:#334155,stroke-width:1.5px,color:#0F172A;
 classDef loop fill:#FEF3C7,stroke:#B45309,stroke-width:1.2px,color:#0F172A;
-classDef end fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
+classDef terminal fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
 
 Start((开始<br/>明确目标与口径))
 
@@ -44,7 +44,7 @@ S12["S12 claim可证性审计<br/>按plan逐条检查证据覆盖"]:::proof
 G4{"G4 所有claim<br/>是否可被证据支撑？"}:::gate
 S13["S13 更新plan（保留前后）<br/>回注未证实点并生成下一轮需求"]:::loop
 S14["S14 对外产出<br/>口头版材料/提交包/复现实验清单"]:::proof
-Done((闭环完成)):::end
+Done((闭环完成)):::terminal
 end
 
 Start --> S1
@@ -88,4 +88,3 @@ G4 -- 是 --> S14 --> Done
 2. **为什么要有 smoke/full 双闸门**：先低成本发现结构性错误，再把算力用于真正可用配置。  
 3. **为什么要外部 gold 验证**：它是空间 grounding 的客观锚点，直接决定结论可信度。  
 4. **为什么 proof 后还要改 plan**：审稿关注的是“claim 是否被证据支撑”，不是“实验是否很多”。  
-
