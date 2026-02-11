@@ -1,0 +1,47 @@
+flowchart TB
+
+classDef data fill:#E0F2FE,stroke:#0369A1,stroke-width:1.4px,color:#0F172A;
+classDef bet fill:#EDE9FE,stroke:#6D28D9,stroke-width:1.4px,color:#0F172A;
+classDef gen fill:#ECFDF5,stroke:#047857,stroke-width:1.4px,color:#0F172A;
+classDef verify fill:#FEF3C7,stroke:#B45309,stroke-width:1.4px,color:#0F172A;
+classDef train fill:#FCE7F3,stroke:#BE185D,stroke-width:1.4px,color:#0F172A;
+classDef gate fill:#F8FAFC,stroke:#334155,stroke-width:1.6px,color:#0F172A;
+classDef artifact fill:#FFF7ED,stroke:#C2410C,stroke-width:1.4px,color:#0F172A;
+classDef terminal fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
+
+Start((输入：3D CT体数据 + 预算B<br/>B = B_enc + B_gen)):::data
+
+subgraph Infer["A. 在线推理主链（方法本体）"]
+direction TB
+I1["I1 BET初始化<br/>root cell / fixed-grid"]:::bet
+I2["I2 TokenEncoder编码<br/>embedding + score + uncertainty"]:::bet
+I3["I3 可选评分融合<br/>lesionness / saliency"]:::bet
+I4["I4 EvidenceHead估计Δ(c)<br/>issue_reduction + uncertainty"]:::bet
+I5{"I5 停机条件是否满足？<br/>预算到顶 / Δ<ε / 无可分cell"}:::gate
+I6["I6 split c*并重编码<br/>细化高价值空间区域"]:::bet
+I7["I7 EvidenceGraph构图<br/>生成constrained vocab"]:::gen
+I8["I8 PCG解码<br/>frames + citations + q + refusal"]:::gen
+I9["I9 Verifier规则校验<br/>U1/O1/I1/M1 + trace"]:::verify
+I10{"I10 仍有高严重issue且可继续？"}:::gate
+I11["I11 进入refine回路<br/>返回I4继续预算分配"]:::bet
+I12["I12 输出双通道结果<br/>结构化frames + narrative文本"]:::artifact
+I13["I13 评测与审计<br/>frame_f1 / iou_union / unsupported / counterfactual"]:::artifact
+end
+
+subgraph Train["B. 训练主链（M0→M3）"]
+direction TB
+T1["T1 数据与监督构建<br/>FrameExtractor + lesion masks"]:::data
+T2["T2 M0/M1<br/>slot CE + citation弱监督"]:::train
+T3["T3 M2<br/>+ grounding consistency loss"]:::train
+T4["T4 M3<br/>+ LLM contract/refusal约束"]:::train
+T5["T5 参数更新<br/>PCGHead + EvidenceHead (+可选LLM)"]:::train
+end
+
+Start --> I1 --> I2 --> I3 --> I4 --> I5
+I5 -- 否 --> I6 --> I2
+I5 -- 是 --> I7 --> I8 --> I9 --> I10
+I10 -- 是 --> I11 --> I4
+I10 -- 否 --> I12 --> I13 --> Done((方法一次推理完成)):::terminal
+
+T1 --> T2 --> T3 --> T4 --> T5
+T5 -. 训练得到的参数与策略 .-> I8

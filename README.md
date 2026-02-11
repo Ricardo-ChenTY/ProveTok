@@ -15,51 +15,39 @@
 - LaTeX 论文草稿（NeurIPS-style）：`paper/`（入口 `paper/main.tex`，已生成 `paper/main.pdf` 便于快速浏览；正式投稿请替换为官方 NeurIPS style files）。
 - 写作范式拆解与模板：`docs/writing_refs/`（对标论文的结构/图表套路 + 可复用段落模板）。
 
-## 项目工作流（中文流程图）
+## 项目方法流程图（中文）
 
 完整版本（含逐步作用说明）：
-- `docs/public_artifacts/provetok_workflow_cn.md`
-- `docs/public_artifacts/provetok_workflow_cn.mmd`
+- `docs/public_artifacts/provetok_method_cn.md`
+- `docs/public_artifacts/provetok_method_cn.mmd`
 
 ```mermaid
 flowchart TB
-classDef plan fill:#E8F1FF,stroke:#1D4ED8,stroke-width:1.5px,color:#0F172A;
-classDef exp fill:#E8FFF3,stroke:#059669,stroke-width:1.5px,color:#0F172A;
-classDef proof fill:#FFF3E8,stroke:#D97706,stroke-width:1.5px,color:#0F172A;
-classDef gate fill:#F8FAFC,stroke:#334155,stroke-width:1.5px,color:#0F172A;
-classDef loop fill:#FEF3C7,stroke:#B45309,stroke-width:1.2px,color:#0F172A;
+classDef data fill:#E0F2FE,stroke:#0369A1,stroke-width:1.4px,color:#0F172A;
+classDef bet fill:#EDE9FE,stroke:#6D28D9,stroke-width:1.4px,color:#0F172A;
+classDef gen fill:#ECFDF5,stroke:#047857,stroke-width:1.4px,color:#0F172A;
+classDef verify fill:#FEF3C7,stroke:#B45309,stroke-width:1.4px,color:#0F172A;
+classDef gate fill:#F8FAFC,stroke:#334155,stroke-width:1.6px,color:#0F172A;
+classDef artifact fill:#FFF7ED,stroke:#C2410C,stroke-width:1.4px,color:#0F172A;
 classDef terminal fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
 
-Start((开始<br/>明确目标与口径))
-S1["S1 项目结构扫描"]:::plan
-S2["S2 plan↔mohu 同步"]:::plan
-G1{"G1 mohu是否清空"}:::gate
-S3["S3 mohu逐条解决（实现+验证）"]:::plan
-S4["S4 实验台账维护（E####）"]:::exp
-S5["S5 数据资产准备（manifest）"]:::exp
-S6["S6 训练3D空间模型"]:::exp
-S7["S7 外部gold本地验证"]:::exp
-S8["S8 核心实验运行"]:::exp
-G2{"G2 smoke是否通过"}:::gate
-S9["S9 失败归因与修复"]:::loop
-S10["S10 full队列执行"]:::exp
-G3{"G3 full是否通过"}:::gate
-S11["S11 结果回填 docs"]:::proof
-S12["S12 claim可证性审计"]:::proof
-G4{"G4 claim是否都可证明"}:::gate
-S13["S13 更新plan并回到下一轮"]:::loop
-S14["S14 对外产出（oral/提交）"]:::proof
-Done((闭环完成)):::terminal
+Start((输入：3D CT体数据 + 预算B<br/>B = B_enc + B_gen)):::data
+I1["I1 BET初始化 + TokenEncoder"]:::bet
+I2["I2 评分融合与Δ(c)估计<br/>lesionness/saliency + EvidenceHead"]:::bet
+G1{"I3 预算到顶或Δ<ε？"}:::gate
+I3["I4 split c*并继续细化"]:::bet
+I4["I5 EvidenceGraph + constrained vocab"]:::gen
+I5["I6 PCG解码<br/>frames + citations + q + refusal"]:::gen
+I6["I7 Verifier校验<br/>U1/O1/I1/M1"]:::verify
+G2{"I8 高严重issue且可继续？"}:::gate
+I7["I9 输出与评测审计<br/>text/trace/grounding/counterfactual"]:::artifact
+Done((方法一次推理完成)):::terminal
 
-Start --> S1 --> S2 --> G1
-G1 -- 否 --> S3 --> S2
-G1 -- 是 --> S4 --> S5 --> S6 --> S7 --> S8 --> G2
-G2 -- 否 --> S9 --> S4
-G2 -- 是 --> S10 --> G3
-G3 -- 否 --> S9
-G3 -- 是 --> S11 --> S12 --> G4
-G4 -- 否 --> S13 --> S1
-G4 -- 是 --> S14 --> Done
+Start --> I1 --> I2 --> G1
+G1 -- 否 --> I3 --> I1
+G1 -- 是 --> I4 --> I5 --> I6 --> G2
+G2 -- 是 --> I2
+G2 -- 否 --> I7 --> Done
 ```
 
 ## 1. Introduction
