@@ -1,4 +1,4 @@
-flowchart LR
+flowchart TB
 
 classDef data fill:#E0F2FE,stroke:#0369A1,stroke-width:1.4px,color:#0F172A;
 classDef bet fill:#EDE9FE,stroke:#6D28D9,stroke-width:1.4px,color:#0F172A;
@@ -10,8 +10,6 @@ classDef artifact fill:#FFF7ED,stroke:#C2410C,stroke-width:1.4px,color:#0F172A;
 classDef note fill:#F1F5F9,stroke:#475569,stroke-width:1.2px,color:#0F172A;
 classDef terminal fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
 
-subgraph Main["ProveTok 方法主流程"]
-direction TB
 Start((输入：3D CT体数据 + 预算B<br/>B = B_enc + B_gen)):::data
 
 subgraph Infer["A. 在线推理主链（方法本体）"]
@@ -20,13 +18,13 @@ I1["I1 BET初始化<br/>root cell / fixed-grid"]:::bet
 I2["I2 TokenEncoder编码<br/>embedding + score + uncertainty"]:::bet
 I3["I3 可选评分融合<br/>lesionness / saliency"]:::bet
 I4["I4 EvidenceHead估计Δ(c)<br/>issue_reduction + uncertainty"]:::bet
-I5{"I5 停机条件是否满足？<br/>预算到顶 / Δ<ε / 无可分cell"}:::gate
+I5{"I5 停机条件？<br/>预算到顶 / Δ<ε / 无可分cell"}:::gate
 I6["I6 split c*并重编码<br/>细化高价值空间区域"]:::bet
 I7["I7 EvidenceGraph构图<br/>生成constrained vocab"]:::gen
 I8["I8 PCG解码<br/>frames + citations + q + refusal"]:::gen
 I9["I9 Verifier规则校验<br/>U1/O1/I1/M1 + trace"]:::verify
 I10{"I10 仍有高严重issue且可继续？"}:::gate
-I11["I11 进入refine回路<br/>返回I4继续预算分配"]:::bet
+I11["I11 回到refine<br/>继续预算分配"]:::bet
 I12["I12 输出双通道结果<br/>结构化frames + narrative文本"]:::artifact
 I13["I13 评测与审计<br/>frame_f1 / iou_union / unsupported / counterfactual"]:::artifact
 end
@@ -48,20 +46,15 @@ I10 -- 否 --> I12 --> I13 --> Done((方法一次推理完成)):::terminal
 
 T1 --> T2 --> T3 --> T4 --> T5
 T5 -. 训练得到的参数与策略 .-> I8
+
+subgraph Notes["旁注节点（回答常见疑问）"]
+direction LR
+N3D["3D模型：I1-I3<br/>把体素变成token并打分，决定空间证据。"]:::note
+NLLM["LLM：I8 + T4<br/>推理端生成frame/text；训练端学合同与拒答。"]:::note
+NRef["Refine：I2-I4循环<br/>用Δ(c)把预算投到高价值区域。"]:::note
+NVer["Verifier：I9<br/>抓unsupported/overclaim并决定是否返工。"]:::note
+NOut["输出：I12-I13<br/>文本只是结果之一，必须有trace与评测证据。"]:::note
+N3D --> NLLM --> NRef --> NVer --> NOut
 end
 
-subgraph Notes["旁注：每一步到底在干什么"]
-direction TB
-N3D["3D模型在 I2/I3：<br/>把体素区域编码成token并打分，<br/>决定哪些空间证据值得保留。"]:::note
-NRef["Refine 在 I4-I6：<br/>不是盲目加token，而是用Δ(c)<br/>把预算集中到高价值区域。"]:::note
-NLLM["LLM 在 I8 与 T4：<br/>I8=推理端生成结构化frame+文本；<br/>T4=训练端做合同/拒答约束。"]:::note
-NVer["Verifier 在 I9：<br/>检查 unsupported/overclaim 等错误，<br/>决定是否回到 refine 回路。"]:::note
-NOut["I12-I13 的产物：<br/>不仅有文本，还要有 citations/trace，<br/>并落到 grounding/counterfactual 指标。"]:::note
-end
-
-I2 -.-> N3D
-I4 -.-> NRef
-I8 -.-> NLLM
-T4 -.-> NLLM
-I9 -.-> NVer
-I13 -.-> NOut
+Done -.-> N3D

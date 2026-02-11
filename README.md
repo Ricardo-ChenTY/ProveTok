@@ -22,7 +22,7 @@
 - `docs/public_artifacts/provetok_method_cn.mmd`
 
 ```mermaid
-flowchart LR
+flowchart TB
 classDef data fill:#E0F2FE,stroke:#0369A1,stroke-width:1.4px,color:#0F172A;
 classDef bet fill:#EDE9FE,stroke:#6D28D9,stroke-width:1.4px,color:#0F172A;
 classDef gen fill:#ECFDF5,stroke:#047857,stroke-width:1.4px,color:#0F172A;
@@ -33,8 +33,6 @@ classDef artifact fill:#FFF7ED,stroke:#C2410C,stroke-width:1.4px,color:#0F172A;
 classDef note fill:#F1F5F9,stroke:#475569,stroke-width:1.2px,color:#0F172A;
 classDef terminal fill:#DCFCE7,stroke:#15803D,stroke-width:1.8px,color:#052E16;
 
-subgraph Main["ProveTok 方法主流程"]
-direction TB
 Start((输入：3D CT体数据 + 预算B<br/>B = B_enc + B_gen)):::data
 I1["I1 BET初始化 + TokenEncoder"]:::bet
 I2["I2 评分融合与Δ(c)估计<br/>lesionness/saliency + EvidenceHead"]:::bet
@@ -45,8 +43,6 @@ I5["I6 PCG解码<br/>frames + citations + q + refusal"]:::gen
 I6["I7 Verifier校验<br/>U1/O1/I1/M1"]:::verify
 G2{"I8 高严重issue且可继续？"}:::gate
 I7["I9 输出与评测审计<br/>text/trace/grounding/counterfactual"]:::artifact
-T4["T4 LLM训练阶段<br/>合同/拒答约束"]:::train
-end
 Done((方法一次推理完成)):::terminal
 
 Start --> I1 --> I2 --> G1
@@ -54,20 +50,19 @@ G1 -- 否 --> I3 --> I1
 G1 -- 是 --> I4 --> I5 --> I6 --> G2
 G2 -- 是 --> I2
 G2 -- 否 --> I7 --> Done
+T1["T1 数据与监督构建"]:::data --> T2["T2 M0/M1"]:::train --> T3["T3 M2"]:::train --> T4["T4 M3（LLM合同/拒答）"]:::train --> T5["T5 参数更新"]:::train
+T5 -. 训练得到参数 .-> I5
 
-subgraph Notes["旁注：常见疑问直答"]
-direction TB
-N3D["3D模型在哪里：I1-I3。<br/>作用：把体素变成token并打分，<br/>决定引用哪些空间证据。"]:::note
-NLLM["LLM在哪里：I6(推理) + T4(训练)。<br/>作用：生成结构化frame+文本，<br/>并学习合同/拒答策略。"]:::note
-NRef["为什么要refine：I2-I4循环。<br/>作用：把有限预算集中到高价值区域，<br/>不是盲目增加token数。"]:::note
-NVer["为什么要verifier：I7。<br/>作用：抓 unsupported/overclaim，<br/>决定是否继续细化。"]:::note
+subgraph Notes["旁注节点（回答常见疑问）"]
+direction LR
+N3D["3D模型：I1-I3<br/>体素→token并打分，决定空间证据。"]:::note
+NLLM["LLM：I6 + T4<br/>推理端生成，训练端学合同/拒答。"]:::note
+NRef["Refine：I2-I4循环<br/>用Δ(c)做预算分配。"]:::note
+NVer["Verifier：I7<br/>抓unsupported/overclaim并决定返工。"]:::note
+N3D --> NLLM --> NRef --> NVer
 end
 
-I2 -.-> N3D
-I5 -.-> NLLM
-T4 -.-> NLLM
-I3 -.-> NRef
-I6 -.-> NVer
+Done -.-> N3D
 ```
 
 **常见疑问（超简版）**
@@ -75,6 +70,11 @@ I6 -.-> NVer
 - `LLM`：在推理端生成 `frames+text`，在训练端学习 contract/refusal；不是替代 3D 证据，而是消费证据。
 - `refine loop`：用 `Δ(c)` 做预算分配，把算力投在最可能修复问题的区域。
 - `verifier`：把“看起来像对”变成可审计规则，失败就回到 refine，而不是直接放行。
+
+**审稿人追问版（直接可答）**
+- 为什么 `+0.001` 也可能有意义：若在多预算/多seed下方向一致且 `Holm` 后仍显著，同时不牺牲 `unsupported` 与 `critical_miss_rate`，它可被定义为“稳定但小效应”；但不能直接宣称临床收益。
+- 什么时候不该 claim 有效：`CI` 跨 0、`Holm` 后不显著、仅在 silver 数据成立、或安全约束（`unsupported/refusal/miss-rate`）恶化时，都只能写成“趋势/探索性观察”。
+- oral 叙事怎么写更稳：把结论限定为“协议级可靠性提升”，并附失败案例与边界条件，避免把统计显著直接上升为临床显著。
 
 ## 1. Introduction
 ### 1.1 问题与动机
