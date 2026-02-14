@@ -263,6 +263,11 @@ def _fuse_token_scores(
                 embedding=t.embedding,
                 score=float(ss),
                 uncertainty=float(t.uncertainty),
+                ref=str(getattr(t, "ref", t.cell_id)),
+                bounds_voxel=tuple(getattr(t, "bounds_voxel", (0, 0, 0, 0, 0, 0))),
+                center_voxel=tuple(getattr(t, "center_voxel", (0.0, 0.0, 0.0))),
+                bounds_mm=getattr(t, "bounds_mm", None),
+                center_mm=getattr(t, "center_mm", None),
             )
         )
     return out

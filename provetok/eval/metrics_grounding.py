@@ -419,6 +419,11 @@ def omega_permutation_test(
         # 置换 cell_ids
         perm_indices = rng.permutation(len(cell_ids))
         permuted_cell_ids = [cell_ids[i] for i in perm_indices]
+        permuted_refs = [str(getattr(tokens[i], "ref", tokens[i].cell_id)) for i in perm_indices]
+        permuted_bounds = [tuple(getattr(tokens[i], "bounds_voxel", (0, 0, 0, 0, 0, 0))) for i in perm_indices]
+        permuted_centers = [tuple(getattr(tokens[i], "center_voxel", (0.0, 0.0, 0.0))) for i in perm_indices]
+        permuted_bounds_mm = [getattr(tokens[i], "bounds_mm", None) for i in perm_indices]
+        permuted_centers_mm = [getattr(tokens[i], "center_mm", None) for i in perm_indices]
 
         # 创建置换后的 tokens
         permuted_tokens = []
@@ -430,6 +435,11 @@ def omega_permutation_test(
                 embedding=t.embedding,  # embedding 保持不变
                 score=t.score,
                 uncertainty=t.uncertainty,
+                ref=str(permuted_refs[i] or permuted_cell_ids[i]),
+                bounds_voxel=tuple(permuted_bounds[i]),
+                center_voxel=tuple(permuted_centers[i]),
+                bounds_mm=permuted_bounds_mm[i],
+                center_mm=permuted_centers_mm[i],
             ))
 
         # 计算置换后的 grounding 分数

@@ -64,3 +64,29 @@ def cell_bounds(cell: Cell, shape: Tuple[int, int, int]) -> Tuple[slice, slice, 
         return slice(start, max(start + 1, end))
 
     return axis_slice(D, cell.iz), axis_slice(H, cell.iy), axis_slice(W, cell.ix)
+
+
+def cell_bounds_int(cell: Cell, shape: Tuple[int, int, int]) -> Tuple[int, int, int, int, int, int]:
+    """Integer bounds form of `cell_bounds`.
+
+    Returns:
+        (z0, z1, y0, y1, x0, x1) with half-open intervals [start, stop).
+    """
+    z, y, x = cell_bounds(cell, shape)
+    return (
+        int(z.start or 0),
+        int(z.stop or 0),
+        int(y.start or 0),
+        int(y.stop or 0),
+        int(x.start or 0),
+        int(x.stop or 0),
+    )
+
+
+def cell_center_voxel(bounds: Tuple[int, int, int, int, int, int]) -> Tuple[float, float, float]:
+    """Compute the voxel-space center (cz, cy, cx) from integer bounds."""
+    z0, z1, y0, y1, x0, x1 = (int(x) for x in bounds)
+    cz = 0.5 * float(z0 + z1)
+    cy = 0.5 * float(y0 + y1)
+    cx = 0.5 * float(x0 + x1)
+    return (cz, cy, cx)

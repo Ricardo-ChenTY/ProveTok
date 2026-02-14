@@ -307,6 +307,11 @@ class SaliencyBETTokenizer(BaseTokenizer):
                     embedding=t.embedding,
                     score=float(s),
                     uncertainty=float(max(0.0, min(1.0, 1.0 - s))),
+                    ref=str(getattr(t, "ref", t.cell_id)),
+                    bounds_voxel=tuple(getattr(t, "bounds_voxel", (0, 0, 0, 0, 0, 0))),
+                    center_voxel=tuple(getattr(t, "center_voxel", (0.0, 0.0, 0.0))),
+                    bounds_mm=getattr(t, "bounds_mm", None),
+                    center_mm=getattr(t, "center_mm", None),
                 )
             )
         return out
@@ -411,6 +416,11 @@ class SaliencyTopKTokenizer(BaseTokenizer):
                     embedding=t.embedding,
                     score=float(s),
                     uncertainty=float(max(0.0, min(1.0, 1.0 - s))),
+                    ref=str(getattr(t, "ref", t.cell_id)),
+                    bounds_voxel=tuple(getattr(t, "bounds_voxel", (0, 0, 0, 0, 0, 0))),
+                    center_voxel=tuple(getattr(t, "center_voxel", (0.0, 0.0, 0.0))),
+                    bounds_mm=getattr(t, "bounds_mm", None),
+                    center_mm=getattr(t, "center_mm", None),
                 )
             )
         return out
@@ -585,6 +595,11 @@ class SaliencyCoverRefineTokenizer(BaseTokenizer):
                     embedding=t.embedding,
                     score=float(s),
                     uncertainty=float(max(0.0, min(1.0, 1.0 - s))),
+                    ref=str(getattr(t, "ref", t.cell_id)),
+                    bounds_voxel=tuple(getattr(t, "bounds_voxel", (0, 0, 0, 0, 0, 0))),
+                    center_voxel=tuple(getattr(t, "center_voxel", (0.0, 0.0, 0.0))),
+                    bounds_mm=getattr(t, "bounds_mm", None),
+                    center_mm=getattr(t, "center_mm", None),
                 )
             )
         return out
@@ -739,7 +754,21 @@ class ROICropTokenizer(BaseTokenizer):
         # Reindex token_id to be contiguous
         out: List[Token] = []
         for i, t in enumerate(tokens):
-            out.append(Token(token_id=i, cell_id=t.cell_id, level=t.level, embedding=t.embedding, score=t.score, uncertainty=t.uncertainty))
+            out.append(
+                Token(
+                    token_id=int(i),
+                    cell_id=str(t.cell_id),
+                    level=int(t.level),
+                    embedding=t.embedding,
+                    score=float(t.score),
+                    uncertainty=float(t.uncertainty),
+                    ref=str(getattr(t, "ref", t.cell_id)),
+                    bounds_voxel=tuple(getattr(t, "bounds_voxel", (0, 0, 0, 0, 0, 0))),
+                    center_voxel=tuple(getattr(t, "center_voxel", (0.0, 0.0, 0.0))),
+                    bounds_mm=getattr(t, "bounds_mm", None),
+                    center_mm=getattr(t, "center_mm", None),
+                )
+            )
         return out
 
 
@@ -775,5 +804,19 @@ class ROIVarianceTokenizer(BaseTokenizer):
         # Reindex token_id to be contiguous (important for ToyPCG citations)
         out: List[Token] = []
         for i, t in enumerate(tokens):
-            out.append(Token(token_id=i, cell_id=t.cell_id, level=t.level, embedding=t.embedding, score=t.score, uncertainty=t.uncertainty))
+            out.append(
+                Token(
+                    token_id=int(i),
+                    cell_id=str(t.cell_id),
+                    level=int(t.level),
+                    embedding=t.embedding,
+                    score=float(t.score),
+                    uncertainty=float(t.uncertainty),
+                    ref=str(getattr(t, "ref", t.cell_id)),
+                    bounds_voxel=tuple(getattr(t, "bounds_voxel", (0, 0, 0, 0, 0, 0))),
+                    center_voxel=tuple(getattr(t, "center_voxel", (0.0, 0.0, 0.0))),
+                    bounds_mm=getattr(t, "bounds_mm", None),
+                    center_mm=getattr(t, "center_mm", None),
+                )
+            )
         return out

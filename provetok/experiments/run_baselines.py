@@ -39,6 +39,7 @@ from ..eval.compute_budget import ComputeUnitCosts, format_budget_report
 from ..eval.compute_budget import match_b_enc_for_total_flops
 from ..eval.metrics_frames import compute_frame_f1
 from ..eval.metrics_grounding import compute_generation_grounding
+from ..eval.metrics_proof import ProofWeights, attach_posthoc_citations, compute_proof_metrics
 from ..eval.metrics_text import MissingTextMetricDependency, compute_text_metrics
 from ..eval.stats import bootstrap_mean_ci
 from ..pcg.generator import ToyPCG
@@ -97,6 +98,14 @@ class BaselineRunConfig:
     ct2rep_strong_weights: str = ""
     ct2rep_strong_device: str = "cpu"
     compute_text_metrics: bool = True
+    compute_proof_metrics: bool = True
+    proof_l_min: int = 2
+    proof_k_max: int = 8
+    proof_posthoc_wrapper: bool = False  # attach citations when missing (pp.md §6.5 fairness wrapper)
+    proof_w1_r1: float = 3.0
+    proof_w2_r2: float = 2.0
+    proof_w3_r3: float = 2.0
+    proof_w4_r4: float = 2.0
 
 
 _LLAMA2_PCG_CACHE: Dict[Tuple[str, str, int, int, str, str, int], Llama2PCG] = {}
@@ -136,6 +145,11 @@ def _apply_token_scores(tokens: List[Token], *, token_score_fn: Any) -> List[Tok
                 embedding=t.embedding,
                 score=float(s),
                 uncertainty=float(t.uncertainty),
+                ref=str(getattr(t, "ref", t.cell_id)),
+                bounds_voxel=tuple(getattr(t, "bounds_voxel", (0, 0, 0, 0, 0, 0))),
+                center_voxel=tuple(getattr(t, "center_voxel", (0.0, 0.0, 0.0))),
+                bounds_mm=getattr(t, "bounds_mm", None),
+                center_mm=getattr(t, "center_mm", None),
             )
         )
     return out
@@ -181,6 +195,11 @@ def _fuse_token_scores_mul(
                 embedding=t.embedding,
                 score=float(fused),
                 uncertainty=float(_clamp01(1.0 - fused)),
+                ref=str(getattr(t, "ref", t.cell_id)),
+                bounds_voxel=tuple(getattr(t, "bounds_voxel", (0, 0, 0, 0, 0, 0))),
+                center_voxel=tuple(getattr(t, "center_voxel", (0.0, 0.0, 0.0))),
+                bounds_mm=getattr(t, "bounds_mm", None),
+                center_mm=getattr(t, "center_mm", None),
             )
         )
     return out
@@ -403,6 +422,16 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             # Diagnostic grounding: include citations from all frames (not used for primary claims).
             "iou_all": [],
         }
+        if bool(cfg.compute_proof_metrics):
+            results[name].update(
+                {
+                    "r1_no_citation": [],
+                    "r2_coarse_only": [],
+                    "r3_laterality_mismatch": [],
+                    "r4_bilateral_separation": [],
+                    "weighted_issue": [],
+                }
+            )
         if text_metrics_enabled:
             results[name].update(
                 {
@@ -600,6 +629,30 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             )
             iou_all = float(g_all.get("iou_union", 0.0))
 
+            proof_metrics: Dict[str, float] = {}
+            if bool(cfg.compute_proof_metrics):
+                gen_proof = gen_eval
+                if bool(cfg.proof_posthoc_wrapper):
+                    gen_proof = attach_posthoc_citations(
+                        gen_proof,
+                        tokens_eval,
+                        k_max=int(cfg.proof_k_max),
+                        positive_only=True,
+                        overwrite_empty_only=True,
+                    )
+                weights = ProofWeights(
+                    w1_r1=float(cfg.proof_w1_r1),
+                    w2_r2=float(cfg.proof_w2_r2),
+                    w3_r3=float(cfg.proof_w3_r3),
+                    w4_r4=float(cfg.proof_w4_r4),
+                )
+                proof_metrics = compute_proof_metrics(
+                    gen_proof,
+                    tokens_eval,
+                    l_min=int(cfg.proof_l_min),
+                    weights=weights,
+                )
+
             results[name]["frame_f1"].append(float(frame_f1))
             results[name]["critical_present_f1"].append(float(critical_present_f1))
             results[name]["critical_present_recall"].append(float(critical_present_recall))
@@ -626,6 +679,12 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             results[name]["n_citations_nonpos"].append(float(n_cite_nonpos))
             results[name]["n_frames_with_citations"].append(float(n_frames_with_cite))
             results[name]["n_frames_pos_with_citations"].append(float(n_frames_pos_with_cite))
+            if proof_metrics:
+                results[name]["r1_no_citation"].append(float(proof_metrics.get("r1_no_citation", 0.0)))
+                results[name]["r2_coarse_only"].append(float(proof_metrics.get("r2_coarse_only", 0.0)))
+                results[name]["r3_laterality_mismatch"].append(float(proof_metrics.get("r3_laterality_mismatch", 0.0)))
+                results[name]["r4_bilateral_separation"].append(float(proof_metrics.get("r4_bilateral_separation", 0.0)))
+                results[name]["weighted_issue"].append(float(proof_metrics.get("weighted_issue", 0.0)))
 
             if text_metrics_enabled:
                 # For contract_mode=free_form, preserve the raw LLM text channel.
@@ -744,6 +803,18 @@ def main() -> None:
     ap.add_argument("--ct2rep-strong-weights", type=str, default="", help="Optional path to ct2rep_strong.pt (paper-grade baseline).")
     ap.add_argument("--ct2rep-strong-device", type=str, default="cpu")
     ap.add_argument("--no-text-metrics", action="store_true", help="Disable BLEU/ROUGE computation.")
+    ap.add_argument("--no-proof-metrics", action="store_true", help="Disable pp.md proof metrics (R1–R4 + WeightedIssue).")
+    ap.add_argument("--proof-l-min", type=int, default=2, help="pp.md R2: minimum token level to avoid CoarseOnly.")
+    ap.add_argument("--proof-k-max", type=int, default=8, help="Max citations per finding for post-hoc wrapper.")
+    ap.add_argument(
+        "--proof-posthoc-wrapper",
+        action="store_true",
+        help="Attach deterministic citations when missing for proof metrics only (pp.md §6.5 fairness wrapper).",
+    )
+    ap.add_argument("--proof-w1-r1", type=float, default=3.0)
+    ap.add_argument("--proof-w2-r2", type=float, default=2.0)
+    ap.add_argument("--proof-w3-r3", type=float, default=2.0)
+    ap.add_argument("--proof-w4-r4", type=float, default=2.0)
     ap.add_argument(
         "--resume",
         action="store_true",
@@ -789,6 +860,14 @@ def main() -> None:
             ct2rep_strong_weights=str(args.ct2rep_strong_weights),
             ct2rep_strong_device=str(args.ct2rep_strong_device),
             compute_text_metrics=(not bool(args.no_text_metrics)),
+            compute_proof_metrics=(not bool(args.no_proof_metrics)),
+            proof_l_min=int(args.proof_l_min),
+            proof_k_max=int(args.proof_k_max),
+            proof_posthoc_wrapper=bool(args.proof_posthoc_wrapper),
+            proof_w1_r1=float(args.proof_w1_r1),
+            proof_w2_r2=float(args.proof_w2_r2),
+            proof_w3_r3=float(args.proof_w3_r3),
+            proof_w4_r4=float(args.proof_w4_r4),
         )
         if args.smoke:
             cfg = BaselineRunConfig(
@@ -827,6 +906,14 @@ def main() -> None:
                 saliency_score_level_power=float(args.saliency_score_level_power),
                 ct2rep_strong_weights=str(args.ct2rep_strong_weights),
                 ct2rep_strong_device=str(args.ct2rep_strong_device),
+                compute_proof_metrics=(not bool(args.no_proof_metrics)),
+                proof_l_min=int(args.proof_l_min),
+                proof_k_max=int(args.proof_k_max),
+                proof_posthoc_wrapper=bool(args.proof_posthoc_wrapper),
+                proof_w1_r1=float(args.proof_w1_r1),
+                proof_w2_r2=float(args.proof_w2_r2),
+                proof_w3_r3=float(args.proof_w3_r3),
+                proof_w4_r4=float(args.proof_w4_r4),
             )
         return cfg
 

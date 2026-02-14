@@ -78,6 +78,13 @@ from .nli import (
     create_combined_verifier,
 )
 
+from .pp_v1_1 import (
+    PP_RULE_SET_VERSION as PP_RULE_SET_VERSION_V11,
+    PPVerifierConfig as PPVerifierConfigV11,
+    PPVerifierV11,
+    create_pp_verifier,
+)
+
 __all__ = [
     # 主函数
     "verify",
@@ -120,4 +127,9 @@ __all__ = [
     "CombinedVerifier",
     "create_nli_verifier",
     "create_combined_verifier",
+    # pp.md verifier (v1.1)
+    "PP_RULE_SET_VERSION_V11",
+    "PPVerifierConfigV11",
+    "PPVerifierV11",
+    "create_pp_verifier",
 ]

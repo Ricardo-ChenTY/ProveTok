@@ -58,3 +58,9 @@ from .metrics_text import (
     compute_text_metrics_batch,
     compute_bertscore_f1_batch,
 )
+
+from .metrics_proof import (
+    ProofWeights,
+    attach_posthoc_citations,
+    compute_proof_metrics,
+)

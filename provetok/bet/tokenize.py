@@ -5,7 +5,7 @@ from typing import List, Tuple, Dict, Optional, Any
 import numpy as np
 import torch
 from ..types import Token
-from ..grid.cells import Cell, cell_bounds
+from ..grid.cells import Cell, cell_bounds, cell_bounds_int, cell_center_voxel
 
 
 def _stable_int_hash(text: str) -> int:
@@ -56,6 +56,8 @@ class _CachedTokenFields:
     score: float
     uncertainty: float
     level: int
+    bounds_voxel: Tuple[int, int, int, int, int, int]
+    center_voxel: Tuple[float, float, float]
 
 
 class TokenEncoder:
@@ -131,6 +133,8 @@ class TokenEncoder:
     def _encode_cell(self, cell: Cell) -> _CachedTokenFields:
         cid = cell.id()
         bounds = cell_bounds(cell, shape=self._vol_shape)
+        bounds_int = cell_bounds_int(cell, shape=self._vol_shape)
+        center = cell_center_voxel(bounds_int)
         patch = self.volume[bounds[0], bounds[1], bounds[2]]
         var = float(patch.var(unbiased=False).item()) if patch.numel() > 0 else 0.0
         score = float(1.0 / (1.0 + np.exp(-3.0 * (var - 0.5))))
@@ -143,7 +147,14 @@ class TokenEncoder:
                 emb_dim=self.emb_dim,
                 seed=0,
             )
-            return _CachedTokenFields(embedding=emb, score=score, uncertainty=uncertainty, level=cell.level)
+            return _CachedTokenFields(
+                embedding=emb,
+                score=score,
+                uncertainty=uncertainty,
+                level=cell.level,
+                bounds_voxel=bounds_int,
+                center_voxel=center,
+            )
 
         # Encoder-backed embedding: pool region from cached feature map.
         feat_bounds = self._map_bounds(bounds, self._vol_shape, self._feat_shape)
@@ -158,7 +169,14 @@ class TokenEncoder:
             pooled = torch.tanh(W @ pooled)
 
         emb = pooled.detach().cpu()
-        return _CachedTokenFields(embedding=emb, score=score, uncertainty=uncertainty, level=cell.level)
+        return _CachedTokenFields(
+            embedding=emb,
+            score=score,
+            uncertainty=uncertainty,
+            level=cell.level,
+            bounds_voxel=bounds_int,
+            center_voxel=center,
+        )
 
     def encode(
         self,
@@ -201,6 +219,9 @@ class TokenEncoder:
                     embedding=f.embedding,
                     score=float(s),
                     uncertainty=f.uncertainty,
+                    ref=str(c.id()),
+                    bounds_voxel=tuple(int(x) for x in f.bounds_voxel),
+                    center_voxel=tuple(float(x) for x in f.center_voxel),
                 )
             )
         return tokens
