@@ -19,6 +19,11 @@ try:  # Optional deps (very slow; keep opt-in)
 except Exception:  # noqa: BLE001
     bert_score = None  # type: ignore
 
+try:  # Optional deps (METEOR; can require NLTK data downloads)
+    from nltk.translate.meteor_score import meteor_score as nltk_meteor_score  # type: ignore
+except Exception:  # noqa: BLE001
+    nltk_meteor_score = None  # type: ignore
+
 
 class MissingTextMetricDependency(RuntimeError):
     pass
@@ -47,6 +52,7 @@ class TextMetricConfig:
     """
 
     compute_bleu: bool = True
+    compute_meteor: bool = False
     compute_rouge: bool = True
     compute_bertscore: bool = False
 
@@ -91,6 +97,21 @@ def compute_text_metrics(
                 tokenize=str(cfg.bleu_tokenize),
             )
             out["bleu"] = float(bleu.score) / 100.0
+
+    if cfg.compute_meteor:
+        _require(nltk_meteor_score, "nltk")
+        if not ref_n and not pred_n:
+            out["meteor"] = 1.0
+        elif not ref_n or not pred_n:
+            out["meteor"] = 0.0
+        else:
+            try:
+                out["meteor"] = float(nltk_meteor_score([ref_n], pred_n))  # type: ignore[misc]
+            except LookupError as e:
+                raise MissingTextMetricDependency(
+                    "NLTK METEOR requires NLTK data packages (e.g., wordnet). "
+                    "Run `python -m nltk.downloader wordnet omw-1.4`."
+                ) from e
 
     if cfg.compute_rouge:
         _require(rouge_scorer, "rouge-score")

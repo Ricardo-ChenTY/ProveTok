@@ -27,7 +27,12 @@ class Token:
     def __post_init__(self) -> None:
         # Keep `ref` stable and non-empty by default.
         if not self.ref:
-            object.__setattr__(self, "ref", str(self.cell_id))
+            # Prefer the stable token id string when available; fall back to cell_id.
+            tid = getattr(self, "token_id", None)
+            if tid is not None:
+                object.__setattr__(self, "ref", str(int(tid)))
+            else:
+                object.__setattr__(self, "ref", str(self.cell_id))
 
         # Best-effort center derivation when bounds are available.
         if self.center_voxel == (0.0, 0.0, 0.0) and self.bounds_voxel != (0, 0, 0, 0, 0, 0):

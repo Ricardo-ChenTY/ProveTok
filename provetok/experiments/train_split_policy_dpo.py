@@ -21,6 +21,7 @@ import torch
 from ..bet.split_policy_dpo import SplitFeaturizerConfig, SplitPolicyNet, dpo_loss, featurize_split_actions
 from ..bet.tokenize import TokenEncoder
 from ..grid.cells import Cell, root_cell, split
+from ..pcg.finding_generator import SlicedGenerationFindingGenerator
 from ..pcg.generator import ToyPCG
 from ..pcg.text_contract import enforce_pp_contract
 from ..types import Generation, Issue, Token
@@ -97,15 +98,17 @@ def _collect_blame_refs(issues: List[Issue]) -> List[str]:
 def _ref_logits_from_features(feats: torch.Tensor) -> torch.Tensor:
     """Heuristic reference policy logits (deterministic, auditable)."""
     # Feature indices (see featurize_split_actions):
-    # 0 level_norm, 1 score, 2 unc, 9 crosses, 11 is_r2, 12 is_r3, 13 is_r4
+    # 0 level_norm, 1 score, 2 unc, 6 sz_n, 7 sy_n, 8 sx_n, 9 crosses, 11 is_r2, 12 is_r3, 13 is_r4
     level = feats[:, 0]
     score = feats[:, 1]
     unc = feats[:, 2]
+    vol = feats[:, 6] * feats[:, 7] * feats[:, 8]
     crosses = feats[:, 9]
     is_r2 = feats[:, 11]
     is_r3 = feats[:, 12]
     is_r4 = feats[:, 13]
-    return 1.5 * unc + 1.0 * score + 2.0 * is_r2 * (1.0 - level) + 1.0 * is_r3 * crosses + 0.5 * is_r4
+    # Align with pp.md §5.1 priorities: R2 coarse-first, R3 boundary-first, tie-break by volume.
+    return 2.0 * is_r2 * (1.0 - level) + 2.0 * is_r3 * crosses + 0.5 * is_r4 + 0.25 * vol + 0.5 * score + 0.25 * unc
 
 
 def _init_cells(*, init_level: int, budget_tokens: int, max_depth: int) -> List[Cell]:
@@ -125,6 +128,12 @@ def _gen_pref_samples(cfg: TrainConfig) -> List[Dict[str, Any]]:
     rng = np.random.RandomState(int(cfg.seed))
     verifier = create_pp_verifier(l_min=int(cfg.l_min))
     pcg = ToyPCG(emb_dim=int(cfg.emb_dim), topk=int(cfg.topk_citations), seed=int(cfg.seed))
+    fg = SlicedGenerationFindingGenerator(
+        lambda toks: pcg(toks),
+        k_max=int(cfg.k_max_citations),
+        l_min=int(cfg.l_min),
+        verifier=verifier,
+    )
 
     samples: List[Dict[str, Any]] = []
     attempts = 0
@@ -191,8 +200,9 @@ def _gen_pref_samples(cfg: TrainConfig) -> List[Dict[str, Any]]:
                 action_scores.append(float("inf"))
                 continue
             tokens2 = enc.encode(cells2)
-            gen2 = pcg(tokens2)
-            gen_one2 = enforce_pp_contract(_slice_generation(gen2, frame_idx=int(picked_idx)), tokens2, k_max=int(cfg.k_max_citations))
+            # pp.md one-step lookahead: split → rewrite current finding → verify.
+            line2 = fg.rewrite_one(tokens2, finding_idx=int(picked_idx), issues=picked_issues)
+            gen_one2 = enforce_pp_contract(line2.to_single_generation(), tokens2, k_max=int(cfg.k_max_citations))
             m = compute_proof_metrics(gen_one2, tokens2, l_min=int(cfg.l_min))
             action_scores.append(float(m.get("weighted_issue", 0.0)))
 
@@ -340,4 +350,3 @@ if __name__ == "__main__":
     except Exception:
         pass
     main()
-

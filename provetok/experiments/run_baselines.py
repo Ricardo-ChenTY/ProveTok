@@ -40,7 +40,8 @@ from ..eval.compute_budget import match_b_enc_for_total_flops
 from ..eval.metrics_frames import compute_frame_f1
 from ..eval.metrics_grounding import compute_generation_grounding
 from ..eval.metrics_proof import ProofWeights, attach_posthoc_citations, compute_proof_metrics
-from ..eval.metrics_text import MissingTextMetricDependency, compute_text_metrics
+from ..eval.metrics_text import MissingTextMetricDependency, TextMetricConfig, compute_text_metrics
+from ..eval.clinical_metrics import ClinicalMetricConfig, compute_clinical_metrics
 from ..eval.stats import bootstrap_mean_ci
 from ..pcg.generator import ToyPCG
 from ..pcg.llama2_pcg import Llama2PCG, Llama2PCGConfig
@@ -98,6 +99,10 @@ class BaselineRunConfig:
     ct2rep_strong_weights: str = ""
     ct2rep_strong_device: str = "cpu"
     compute_text_metrics: bool = True
+    compute_meteor: bool = False
+    compute_clinical_metrics: bool = False
+    clinical_metrics_device: str = "cpu"
+    chexbert_weights: str = ""
     compute_proof_metrics: bool = True
     proof_l_min: int = 2
     proof_k_max: int = 8
@@ -280,9 +285,11 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
     costs = ComputeUnitCosts.from_json(cfg.costs_json) if cfg.costs_json else ComputeUnitCosts()
 
     text_metrics_enabled = bool(cfg.compute_text_metrics)
+    clinical_metrics_enabled = bool(cfg.compute_clinical_metrics)
+    text_metrics_cfg = TextMetricConfig(compute_meteor=bool(cfg.compute_meteor))
     if text_metrics_enabled:
         try:
-            _ = compute_text_metrics("a", "a")
+            _ = compute_text_metrics("a", "a", cfg=text_metrics_cfg)
         except MissingTextMetricDependency:
             text_metrics_enabled = False
 
@@ -443,6 +450,18 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
                     "rouge1": [],
                     "rouge2": [],
                     "rougeL": [],
+                }
+            )
+            if bool(cfg.compute_meteor):
+                results[name]["meteor"] = []
+        if clinical_metrics_enabled:
+            results[name].update(
+                {
+                    "chexbert_f1": [],
+                    "radgraph_f1": [],
+                    "radcliq": [],
+                    "green": [],
+                    "ratescore": [],
                 }
             )
 
@@ -696,22 +715,46 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
                 results[name]["r4_bilateral_separation"].append(float(proof_metrics.get("r4_bilateral_separation", 0.0)))
                 results[name]["weighted_issue"].append(float(proof_metrics.get("weighted_issue", 0.0)))
 
-            if text_metrics_enabled:
+            pred_text = ""
+            if text_metrics_enabled or clinical_metrics_enabled:
                 # For contract_mode=free_form, preserve the raw LLM text channel.
                 # For schema-based modes, Generation.text is a machine-parseable narrative,
                 # so we compute text metrics on a naturalized report derived from frames.
-                pred_text = ""
                 if cfg.pcg_backend == "llama2" and str(cfg.llama2_contract_mode) == "free_form":
                     pred_text = str(getattr(gen_eval, "text", "") or "").strip()
                 if not pred_text:
                     pred_text = frames_to_report(gen_eval.frames)
+
+            if clinical_metrics_enabled:
+                cm_cfg = ClinicalMetricConfig(
+                    compute_chexbert_f1=True,
+                    compute_radgraph_f1=True,
+                    compute_radcliq=True,
+                    compute_green=True,
+                    compute_ratescore=True,
+                    device=str(cfg.clinical_metrics_device),
+                    chexbert_weights=str(cfg.chexbert_weights),
+                )
                 try:
-                    m = compute_text_metrics(pred_text, gt_report_raw)
+                    cm = compute_clinical_metrics(pred_text, gt_report_raw, cfg=cm_cfg)
+                except Exception:  # noqa: BLE001
+                    cm = {}
+                results[name]["chexbert_f1"].append(float(cm.get("chexbert_f1", float("nan"))))
+                results[name]["radgraph_f1"].append(float(cm.get("radgraph_f1", float("nan"))))
+                results[name]["radcliq"].append(float(cm.get("radcliq", float("nan"))))
+                results[name]["green"].append(float(cm.get("green", float("nan"))))
+                results[name]["ratescore"].append(float(cm.get("ratescore", float("nan"))))
+
+            if text_metrics_enabled:
+                try:
+                    m = compute_text_metrics(pred_text, gt_report_raw, cfg=text_metrics_cfg)
                 except MissingTextMetricDependency:
                     # Should not happen because we probe once above, but keep robust.
                     text_metrics_enabled = False
                     m = {}
                 results[name]["bleu"].append(float(m.get("bleu", 0.0)))
+                if bool(cfg.compute_meteor):
+                    results[name]["meteor"].append(float(m.get("meteor", 0.0)))
                 results[name]["rouge1"].append(float(m.get("rouge1", 0.0)))
                 results[name]["rouge2"].append(float(m.get("rouge2", 0.0)))
                 results[name]["rougeL"].append(float(m.get("rougeL", 0.0)))
@@ -813,6 +856,10 @@ def main() -> None:
     ap.add_argument("--ct2rep-strong-weights", type=str, default="", help="Optional path to ct2rep_strong.pt (paper-grade baseline).")
     ap.add_argument("--ct2rep-strong-device", type=str, default="cpu")
     ap.add_argument("--no-text-metrics", action="store_true", help="Disable BLEU/ROUGE computation.")
+    ap.add_argument("--meteor", action="store_true", help="Compute METEOR (requires nltk + nltk data packages).")
+    ap.add_argument("--clinical-metrics", action="store_true", help="Compute Table 1 clinical metrics (scaffold; may output NaN).")
+    ap.add_argument("--clinical-device", type=str, default="cpu")
+    ap.add_argument("--chexbert-weights", type=str, default="", help="Optional CheXbert weights path (when integrated).")
     ap.add_argument("--no-proof-metrics", action="store_true", help="Disable pp.md proof metrics (R1–R4 + WeightedIssue).")
     ap.add_argument("--proof-l-min", type=int, default=2, help="pp.md R2: minimum token level to avoid CoarseOnly.")
     ap.add_argument("--proof-k-max", type=int, default=8, help="Max citations per finding for post-hoc wrapper.")
@@ -870,6 +917,10 @@ def main() -> None:
             ct2rep_strong_weights=str(args.ct2rep_strong_weights),
             ct2rep_strong_device=str(args.ct2rep_strong_device),
             compute_text_metrics=(not bool(args.no_text_metrics)),
+            compute_meteor=bool(args.meteor),
+            compute_clinical_metrics=bool(args.clinical_metrics),
+            clinical_metrics_device=str(args.clinical_device),
+            chexbert_weights=str(args.chexbert_weights),
             compute_proof_metrics=(not bool(args.no_proof_metrics)),
             proof_l_min=int(args.proof_l_min),
             proof_k_max=int(args.proof_k_max),
@@ -917,6 +968,10 @@ def main() -> None:
                 ct2rep_strong_weights=str(args.ct2rep_strong_weights),
                 ct2rep_strong_device=str(args.ct2rep_strong_device),
                 compute_proof_metrics=(not bool(args.no_proof_metrics)),
+                compute_meteor=bool(args.meteor),
+                compute_clinical_metrics=bool(args.clinical_metrics),
+                clinical_metrics_device=str(args.clinical_device),
+                chexbert_weights=str(args.chexbert_weights),
                 proof_l_min=int(args.proof_l_min),
                 proof_k_max=int(args.proof_k_max),
                 proof_posthoc_wrapper=bool(args.proof_posthoc_wrapper),

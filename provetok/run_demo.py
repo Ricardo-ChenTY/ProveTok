@@ -9,12 +9,14 @@ import numpy as np
 from .data.io import load_volume
 from .pcg import ToyPCG, Llama2PCG, Llama2PCGConfig
 from .pcg.text_contract import enforce_pp_contract, render_findings, render_impression
+from .pcg.proof_object import build_proof_object_from_generation
 from .verifier import verify
 from .bet import run_refine_loop
 from .agent import AgentConfig, run_provetok_agent
 from .utils.artifact import build_artifact_meta
 from .verifier.rules import RULE_SET_VERSION
 from .verifier.taxonomy import TAXONOMY_VERSION
+from .verifier.pp_contract import check_impression_no_new_cite
 from .pcg.schema_version import SCHEMA_VERSION
 
 app = typer.Typer(add_completion=False)
@@ -124,6 +126,10 @@ def main(
     findings_lines = render_findings(gen_pp, k_max=8)
     artifact["pp_findings"] = findings_lines
     artifact["pp_impression"] = render_impression(findings_lines)
+    proof_obj = build_proof_object_from_generation(gen_pp, res.tokens, k_max=8, impression=artifact["pp_impression"])
+    artifact["proof_object"] = proof_obj.to_dict()
+    r0 = check_impression_no_new_cite(findings_lines=findings_lines, impression=str(artifact["pp_impression"]))
+    artifact["contract_issues"] = [] if r0 is None else [r0.__dict__]
 
     rprint("[bold green]=== ProveTok v0 Artifact (JSON) ===[/bold green]")
 

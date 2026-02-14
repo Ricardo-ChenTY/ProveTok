@@ -85,6 +85,11 @@ from .pp_v1_1 import (
     create_pp_verifier,
 )
 
+from .pp_contract import (
+    check_impression_no_new_cite,
+    extract_citations_from_text,
+)
+
 __all__ = [
     # 主函数
     "verify",
@@ -132,4 +137,7 @@ __all__ = [
     "PPVerifierConfigV11",
     "PPVerifierV11",
     "create_pp_verifier",
+    # pp.md contract checks (non-hard)
+    "check_impression_no_new_cite",
+    "extract_citations_from_text",
 ]

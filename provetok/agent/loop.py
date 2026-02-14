@@ -5,9 +5,10 @@ from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import torch
 
-from ..bet.allocator import pick_cell_to_split
+from ..bet.split_policy_heuristic_pp import pick_cell_to_split_heuristic_pp
 from ..bet.tokenize import TokenEncoder
 from ..grid.cells import Cell, cell_stable_id, root_cell, split
+from ..pcg.finding_generator import FindingGenerator, SlicedGenerationFindingGenerator
 from ..pcg.text_contract import enforce_pp_contract, render_findings, render_impression
 from ..eval.metrics_proof import attach_posthoc_citations
 from ..types import Frame, Generation, Issue, Token
@@ -55,21 +56,6 @@ class AgentResult:
     impression: str
     trace: List[AgentStepTrace] = field(default_factory=list)
     final_cells: List[Cell] = field(default_factory=list)
-
-
-def _slice_generation(gen: Generation, *, frame_idx: int) -> Generation:
-    """Extract a single-frame Generation for verifier-local reasoning."""
-    if gen is None or not (gen.frames or []):
-        return Generation(frames=[], citations={}, q={}, refusal={}, text="")
-    idx = int(frame_idx)
-    if idx < 0 or idx >= len(gen.frames):
-        return Generation(frames=[], citations={}, q={}, refusal={}, text="")
-    fr = gen.frames[idx]
-    cites = {0: list((gen.citations or {}).get(idx, []) or [])}
-    q = {0: float((gen.q or {}).get(idx, getattr(fr, "confidence", 0.5)))}
-    refusal = {0: bool((gen.refusal or {}).get(idx, False))}
-    cites_ref = {0: list((gen.citations_ref or {}).get(idx, []) or [])} if getattr(gen, "citations_ref", None) else {}
-    return Generation(frames=[fr], citations=cites, q=q, refusal=refusal, citations_ref=cites_ref, text="")
 
 
 def _issue_dict(iss: Issue) -> Dict:
@@ -158,6 +144,7 @@ def run_provetok_agent(
     volume: torch.Tensor,
     *,
     generator_fn: Callable[[List[Token]], Generation],
+    finding_generator: Optional[FindingGenerator] = None,
     verifier: Optional[PPVerifierV11] = None,
     cfg: AgentConfig = AgentConfig(),
     seed: int = 0,
@@ -209,22 +196,37 @@ def run_provetok_agent(
     gen0 = generator_fn(toks0)
     K = len(gen0.frames or [])
 
+    fg = finding_generator or SlicedGenerationFindingGenerator(
+        generator_fn,
+        k_max=int(cfg.k_max_citations),
+        l_min=int(cfg.l_min),
+        verifier=verifier,
+    )
+
     accepted_frames: List[Frame] = []
     accepted_citations: Dict[int, List[int]] = {}
     accepted_q: Dict[int, float] = {}
     accepted_refusal: Dict[int, bool] = {}
+    context_findings: List[str] = []
 
     for finding_idx in range(K):
         stopped_reason = "max_steps"
+        pending_rewrite_issues: Optional[List[Issue]] = None
         for it in range(max_steps_per_finding):
             tokens = token_encoder.encode(cells)
             leaf_ids = {int(t.token_id) for t in tokens}
 
-            gen_full = generator_fn(tokens)
-            gen_one = _slice_generation(gen_full, frame_idx=int(finding_idx))
+            if pending_rewrite_issues is None:
+                line = fg.generate_one(tokens, finding_idx=int(finding_idx), context_findings=context_findings)
+            else:
+                line = fg.rewrite_one(
+                    tokens,
+                    finding_idx=int(finding_idx),
+                    context_findings=context_findings,
+                    issues=list(pending_rewrite_issues),
+                )
 
-            # Enforce the pp.md contract (citations validity + k_max + citations_ref).
-            gen_one = enforce_pp_contract(gen_one, tokens, k_max=int(cfg.k_max_citations))
+            gen_one = enforce_pp_contract(line.to_single_generation(), tokens, k_max=int(cfg.k_max_citations))
 
             # R1 fallback: attach deterministic citations if missing.
             issues = verifier.verify(gen_one, tokens)
@@ -248,6 +250,20 @@ def run_provetok_agent(
                 accepted_citations[finding_idx] = list((gen_one.citations or {}).get(0, []) or [])
                 accepted_q[finding_idx] = float((gen_one.q or {}).get(0, getattr(fr, "confidence", 0.5)))
                 accepted_refusal[finding_idx] = bool((gen_one.refusal or {}).get(0, False))
+                context_findings = render_findings(
+                    enforce_pp_contract(
+                        Generation(
+                            frames=list(accepted_frames),
+                            citations={int(k): list(v) for k, v in accepted_citations.items()},
+                            q=dict(accepted_q),
+                            refusal=dict(accepted_refusal),
+                            text="",
+                        ),
+                        tokens,
+                        k_max=int(cfg.k_max_citations),
+                    ),
+                    k_max=int(cfg.k_max_citations),
+                )
                 trace.append(
                     AgentStepTrace(
                         finding_idx=int(finding_idx),
@@ -272,7 +288,7 @@ def run_provetok_agent(
                 if split_cell_fn is not None:
                     c_star = split_cell_fn(list(splittable_cells), list(tokens), list(issues))
                 else:
-                    c_star = pick_cell_to_split(splittable_cells, tokens, list(issues))
+                    c_star = pick_cell_to_split_heuristic_pp(splittable_cells, tokens, list(issues))
 
             if c_star is None:
                 # No blamed splittable action or cannot afford split → despecify.
@@ -292,6 +308,20 @@ def run_provetok_agent(
                 accepted_citations[finding_idx] = list(cites)
                 accepted_q[finding_idx] = float((gen_one.q or {}).get(0, getattr(fr1, "confidence", 0.5)))
                 accepted_refusal[finding_idx] = bool((gen_one.refusal or {}).get(0, False))
+                context_findings = render_findings(
+                    enforce_pp_contract(
+                        Generation(
+                            frames=list(accepted_frames),
+                            citations={int(k): list(v) for k, v in accepted_citations.items()},
+                            q=dict(accepted_q),
+                            refusal=dict(accepted_refusal),
+                            text="",
+                        ),
+                        tokens,
+                        k_max=int(cfg.k_max_citations),
+                    ),
+                    k_max=int(cfg.k_max_citations),
+                )
 
                 trace.append(
                     AgentStepTrace(
@@ -327,6 +357,21 @@ def run_provetok_agent(
                     k_max=int(cfg.k_max_citations),
                 )
 
+            context_findings = render_findings(
+                enforce_pp_contract(
+                    Generation(
+                        frames=list(accepted_frames),
+                        citations={int(k): list(v) for k, v in accepted_citations.items()},
+                        q=dict(accepted_q),
+                        refusal=dict(accepted_refusal),
+                        text="",
+                    ),
+                    tokens_after,
+                    k_max=int(cfg.k_max_citations),
+                ),
+                k_max=int(cfg.k_max_citations),
+            )
+
             trace.append(
                 AgentStepTrace(
                     finding_idx=int(finding_idx),
@@ -340,18 +385,33 @@ def run_provetok_agent(
                 )
             )
             stopped_reason = "split"
+            pending_rewrite_issues = list(issues)
 
-        # If the loop didn't accept (max steps), fall back to despecify.
-        if stopped_reason == "max_steps":
+        # If the loop didn't finalize this finding (e.g., kept splitting), fall back to despecify.
+        if len(accepted_frames) <= int(finding_idx):
             tokens = token_encoder.encode(cells)
-            gen_full = generator_fn(tokens)
-            gen_one = enforce_pp_contract(_slice_generation(gen_full, frame_idx=int(finding_idx)), tokens, k_max=int(cfg.k_max_citations))
+            line = fg.generate_one(tokens, finding_idx=int(finding_idx), context_findings=context_findings)
+            gen_one = enforce_pp_contract(line.to_single_generation(), tokens, k_max=int(cfg.k_max_citations))
             fr0 = gen_one.frames[0] if gen_one.frames else Frame(finding="normal", polarity="absent", laterality="unspecified", confidence=0.5)
             fr1 = _despecify_frame(fr0) if bool(cfg.despecify_on_fail) else fr0
             accepted_frames.append(fr1)
             accepted_citations[finding_idx] = []
             accepted_q[finding_idx] = float((gen_one.q or {}).get(0, getattr(fr1, "confidence", 0.5)))
             accepted_refusal[finding_idx] = bool((gen_one.refusal or {}).get(0, False))
+            context_findings = render_findings(
+                enforce_pp_contract(
+                    Generation(
+                        frames=list(accepted_frames),
+                        citations={int(k): list(v) for k, v in accepted_citations.items()},
+                        q=dict(accepted_q),
+                        refusal=dict(accepted_refusal),
+                        text="",
+                    ),
+                    tokens,
+                    k_max=int(cfg.k_max_citations),
+                ),
+                k_max=int(cfg.k_max_citations),
+            )
             trace.append(
                 AgentStepTrace(
                     finding_idx=int(finding_idx),
