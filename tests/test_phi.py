@@ -1,4 +1,4 @@
-from provetok.grid.cells import root_cell, split, cell_bounds
+from provetok.grid.cells import root_cell, split, cell_bounds, cell_stable_id
 
 def test_phi_nonempty():
     shape = (10, 20, 30)
@@ -12,3 +12,12 @@ def test_split_8():
     c0 = root_cell()
     kids = split(c0)
     assert len(kids) == 8
+
+def test_stable_id_unique_and_stable():
+    c0 = root_cell()
+    kids = split(c0)
+    ids = [cell_stable_id(c) for c in kids]
+    assert len(set(ids)) == len(ids)
+    # Stable across calls.
+    ids2 = [cell_stable_id(c) for c in kids]
+    assert ids == ids2

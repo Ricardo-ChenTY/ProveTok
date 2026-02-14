@@ -17,7 +17,8 @@ def _frame_to_sentence(frame: Frame) -> str:
     lat = ""
     if str(frame.laterality) in ("left", "right", "bilateral"):
         lat = f"{frame.laterality.capitalize()} "
-    return f"{lat}{frame.finding}.".strip()
+    hedged = "Possible " if bool(getattr(frame, "uncertain", False)) else ""
+    return f"{hedged}{lat}{frame.finding}.".strip()
 
 
 def render_findings(gen: Generation, *, k_max: int = 8) -> List[str]:
@@ -87,3 +88,48 @@ def parse_findings_text(text: str) -> Tuple[List[Frame], Dict[int, List[TokenRef
         frames.append(fr)
         cites_ref[int(i)] = [str(x) for x in row.citations]
     return frames, cites_ref
+
+
+def enforce_pp_contract(
+    gen: Generation,
+    tokens,
+    *,
+    k_max: int = 8,
+) -> Generation:
+    """Enforce pp.md Findings citation contract on a structured Generation.
+
+    Ensures:
+    - citations contain only token ids present in `tokens`
+    - citations are truncated to k_max
+    - citations_ref is populated with stable token refs (Token.ref), when available
+    """
+    toks = list(tokens or [])
+    token_by_id = {int(getattr(t, "token_id", -1)): t for t in toks}
+
+    citations: Dict[int, List[int]] = {}
+    citations_ref: Dict[int, List[str]] = {}
+    for idx, _ in enumerate(gen.frames or []):
+        idx_i = int(idx)
+        raw = (gen.citations or {}).get(idx_i, []) or []
+        cleaned: List[int] = []
+        for x in raw:
+            try:
+                tid = int(x)
+            except Exception:
+                continue
+            if tid in token_by_id:
+                cleaned.append(int(tid))
+        cleaned = cleaned[: max(0, int(k_max))]
+        citations[idx_i] = list(cleaned)
+        refs = [str(getattr(token_by_id[tid], "ref", tid)) for tid in cleaned if tid in token_by_id]
+        citations_ref[idx_i] = refs
+
+    return Generation(
+        frames=list(gen.frames or []),
+        citations=citations,
+        q=dict(gen.q or {}),
+        refusal=dict(gen.refusal or {}),
+        citations_ref=citations_ref,
+        text=str(getattr(gen, "text", "") or ""),
+        impression=str(getattr(gen, "impression", "") or ""),
+    )

@@ -201,6 +201,7 @@ def sanitize_generation_dict(
 
     frames: List[Frame] = []
     citations: Dict[int, List[int]] = {}
+    citations_ref: Dict[int, List[str]] = {}
     q: Dict[int, float] = {}
     refusal: Dict[int, bool] = {}
 
@@ -280,6 +281,9 @@ def sanitize_generation_dict(
                 cites.append(xi)
         cites = cites[: int(cfg.topk_citations)]
         citations[k] = cites
+        # Stable-id citations (pp.md-style). When Token.ref is not available at
+        # this stage, we use the token_id string as the stable reference.
+        citations_ref[k] = [str(int(x)) for x in cites]
 
         raw_q = q_in.get(str(k), q_in.get(k, confidence))
         try:
@@ -296,8 +300,15 @@ def sanitize_generation_dict(
             ref = _as_bool(raw_ref)
         refusal[k] = bool(ref)
 
-    gen_tmp = Generation(frames=frames, citations=citations, q=q, refusal=refusal, text="")
-    return Generation(frames=frames, citations=citations, q=q, refusal=refusal, text=render_generation_text(gen_tmp))
+    gen_tmp = Generation(frames=frames, citations=citations, q=q, refusal=refusal, citations_ref=citations_ref, text="")
+    return Generation(
+        frames=frames,
+        citations=citations,
+        q=q,
+        refusal=refusal,
+        citations_ref=citations_ref,
+        text=render_generation_text(gen_tmp),
+    )
 
 
 class Llama2PCG:
@@ -451,7 +462,15 @@ class Llama2PCG:
         # - schema_citations/full: citations are required; default is deterministic score-based override.
         if mode == "schema_only":
             citations = {int(i): [] for i in range(len(gen.frames))}
-            gen = Generation(frames=gen.frames, citations=citations, q=gen.q, refusal=gen.refusal, text=gen.text)
+            citations_ref = {int(i): [] for i in range(len(gen.frames))}
+            gen = Generation(
+                frames=gen.frames,
+                citations=citations,
+                q=gen.q,
+                refusal=gen.refusal,
+                citations_ref=citations_ref,
+                text=gen.text,
+            )
             return gen
 
         citation_source = str(getattr(self.cfg, "citation_source", "score_override")).strip().lower()
@@ -527,6 +546,14 @@ class Llama2PCG:
 
             top_ids = [int(t.token_id) for t in chosen]
             citations = {int(i): list(top_ids) for i in range(len(gen.frames))}
-            gen = Generation(frames=gen.frames, citations=citations, q=gen.q, refusal=gen.refusal, text="")
-            gen = Generation(frames=gen.frames, citations=citations, q=gen.q, refusal=gen.refusal, text=render_generation_text(gen))
+            citations_ref = {int(i): [str(int(x)) for x in top_ids] for i in range(len(gen.frames))}
+            gen = Generation(frames=gen.frames, citations=citations, q=gen.q, refusal=gen.refusal, citations_ref=citations_ref, text="")
+            gen = Generation(
+                frames=gen.frames,
+                citations=citations,
+                q=gen.q,
+                refusal=gen.refusal,
+                citations_ref=citations_ref,
+                text=render_generation_text(gen),
+            )
         return gen

@@ -261,13 +261,165 @@ def compute_generation_grounding(
     cites_by_frame = _select_positive_citations(generation) if positive_only else (generation.citations or {})
     cited_ids = union_citations(cites_by_frame)
     lesion_union = union_lesion_masks(lesion_masks, volume_shape)
-    return compute_citation_grounding(
+    out = compute_citation_grounding(
         citations=cited_ids,
         tokens=tokens,
         lesion_mask=lesion_union,
         volume_shape=volume_shape,
         overlap_threshold=overlap_threshold,
     )
+    # pp.md-aligned grounding table columns (RadGenome-style): Hit@8 / Coverage@8.
+    try:
+        out.update(
+            compute_pp_grounding_at_k(
+                citations=cited_ids,
+                tokens=tokens,
+                lesion_mask=lesion_union,
+                volume_shape=volume_shape,
+                k=8,
+            )
+        )
+    except Exception:
+        # Keep grounding evaluation robust; older artifacts only require IoU/Dice.
+        pass
+    try:
+        out["laterality_grounding_acc"] = float(compute_laterality_grounding_accuracy(generation, tokens))
+    except Exception:
+        out["laterality_grounding_acc"] = 0.0
+    return out
+
+
+def _infer_volume_width_from_tokens(tokens: Sequence[Token]) -> int:
+    xs: List[int] = []
+    for t in tokens or []:
+        b = getattr(t, "bounds_voxel", None)
+        if not isinstance(b, tuple) or len(b) != 6:
+            continue
+        try:
+            x1 = int(b[5])
+        except Exception:
+            continue
+        if x1 > 0:
+            xs.append(x1)
+    return int(max(xs)) if xs else 0
+
+
+def _token_side(tok: Token, *, x_mid: float) -> str:
+    b = getattr(tok, "bounds_voxel", None)
+    if not isinstance(b, tuple) or len(b) != 6:
+        return "unknown"
+    try:
+        x0, x1 = float(b[4]), float(b[5])
+    except Exception:
+        return "unknown"
+    if x1 <= x0:
+        return "unknown"
+    if x1 <= float(x_mid):
+        return "left"
+    if x0 >= float(x_mid):
+        return "right"
+    return "cross"
+
+
+def compute_laterality_grounding_accuracy(generation: Generation, tokens: Sequence[Token]) -> float:
+    """Laterality grounding accuracy (pp.md Table 2 column).
+
+    For positive left/right frames, count as correct if *all* cited tokens lie exclusively
+    on the claimed side of the inferred mid-sagittal plane.
+    """
+    toks = list(tokens or [])
+    token_map = {int(getattr(t, "token_id", -1)): t for t in toks}
+
+    W = _infer_volume_width_from_tokens(toks)
+    x_mid = 0.5 * float(W) if W > 0 else 0.0
+
+    correct = 0
+    total = 0
+    for idx, fr in enumerate(generation.frames or []):
+        if bool(getattr(fr, "uncertain", False)):
+            continue
+        if str(getattr(fr, "polarity", "")).lower() not in ("present", "positive"):
+            continue
+        lat = str(getattr(fr, "laterality", "")).lower()
+        if lat not in ("left", "right"):
+            continue
+        total += 1
+        cites = (generation.citations or {}).get(int(idx), []) or []
+        cited_tokens = [token_map.get(int(tid)) for tid in cites]
+        cited_tokens = [t for t in cited_tokens if t is not None]
+        if not cited_tokens:
+            continue
+        sides = [_token_side(t, x_mid=float(x_mid)) for t in cited_tokens]
+        if all(sd == lat for sd in sides):
+            correct += 1
+
+    return float(correct / total) if total > 0 else 0.0
+
+
+def compute_pp_grounding_at_k(
+    *,
+    citations: List[int],
+    tokens: List[Token],
+    lesion_mask: np.ndarray,
+    volume_shape: Tuple[int, int, int],
+    k: int = 8,
+) -> Dict[str, float]:
+    """Compute pp.md-style evidence grounding metrics at K (Hit@K, Coverage@K).
+
+    Definitions (pp.md §6.4):
+    - Hit@K: fraction of cited tokens (up to K) whose cells overlap the mask (IoU>0 ↔ any intersection).
+    - Coverage@K: fraction of mask voxels covered by the union of cited token cells.
+    """
+    k = max(0, int(k))
+    cites = list(citations or [])[:k] if k > 0 else []
+    key_hit = f"hit_at_{k}"
+    key_cov = f"coverage_at_{k}"
+    if not cites:
+        return {key_hit: 0.0, key_cov: 0.0}
+
+    mask = lesion_mask
+    if isinstance(mask, torch.Tensor):
+        mask = mask.detach().cpu().numpy()
+    if not isinstance(mask, np.ndarray) or mask.ndim != 3 or tuple(mask.shape) != tuple(volume_shape):
+        return {key_hit: 0.0, key_cov: 0.0}
+    mask_bool = mask.astype(bool)
+
+    token_map = {int(t.token_id): t for t in tokens}
+    cited_tokens = [token_map[int(tid)] for tid in cites if int(tid) in token_map]
+    if not cited_tokens:
+        return {key_hit: 0.0, key_cov: 0.0}
+
+    # Hit@K: per-token intersection>0 using bounds when available.
+    hits = 0
+    for tok in cited_tokens:
+        b = getattr(tok, "bounds_voxel", None)
+        if isinstance(b, tuple) and len(b) == 6:
+            try:
+                z0, z1, y0, y1, x0, x1 = (int(v) for v in b)
+                z0 = max(0, min(z0, volume_shape[0]))
+                z1 = max(0, min(z1, volume_shape[0]))
+                y0 = max(0, min(y0, volume_shape[1]))
+                y1 = max(0, min(y1, volume_shape[1]))
+                x0 = max(0, min(x0, volume_shape[2]))
+                x1 = max(0, min(x1, volume_shape[2]))
+                if z1 > z0 and y1 > y0 and x1 > x0 and bool(mask_bool[z0:z1, y0:y1, x0:x1].any()):
+                    hits += 1
+                    continue
+            except Exception:
+                pass
+        # Fallback: explicit token mask intersection.
+        tok_mask = tokens_to_mask([tok], volume_shape)
+        if bool(np.logical_and(tok_mask, mask_bool).any()):
+            hits += 1
+
+    hit_at_k = float(hits / max(1, len(cited_tokens)))
+
+    union_mask = tokens_to_mask(cited_tokens, volume_shape)
+    inter = int(np.logical_and(union_mask, mask_bool).sum())
+    lesion_vol = int(mask_bool.sum())
+    coverage = float(inter / lesion_vol) if lesion_vol > 0 else 0.0
+
+    return {key_hit: float(hit_at_k), key_cov: float(coverage)}
 
 
 def compute_grounding_metrics(

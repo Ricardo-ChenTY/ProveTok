@@ -399,8 +399,12 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             "iou": [],
             "dice": [],
             "hit_rate": [],
+            # pp.md-aligned grounding columns (RadGenome-style)
+            "hit_at_8": [],
             "hit_any_intersection": [],
             "hit_lesion_coverage": [],
+            "coverage_at_8": [],
+            "laterality_grounding_acc": [],
             "overlap_ratio_token": [],
             "overlap_ratio_lesion": [],
             "combined": [],
@@ -598,8 +602,11 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             iou = float(g.get("iou_union", 0.0))
             dice = float(g.get("dice_union", 0.0))
             hit = float(g.get("hit", 0.0))
+            hit_at_8 = float(g.get("hit_at_8", 0.0))
             hit_any = float(g.get("hit_any_intersection", 0.0))
             hit_lesion = float(g.get("hit_lesion_coverage", 0.0))
+            coverage_at_8 = float(g.get("coverage_at_8", 0.0))
+            laterality_grounding_acc = float(g.get("laterality_grounding_acc", 0.0))
             overlap_token = float(g.get("overlap_ratio_token", g.get("overlap_ratio", 0.0)))
             overlap_lesion = float(g.get("overlap_ratio_lesion", 0.0))
             combined = float(cfg.nlg_weight) * float(frame_f1) + float(cfg.grounding_weight) * float(iou)
@@ -660,8 +667,11 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             results[name]["iou_all"].append(float(iou_all))
             results[name]["dice"].append(float(dice))
             results[name]["hit_rate"].append(float(hit))
+            results[name]["hit_at_8"].append(float(hit_at_8))
             results[name]["hit_any_intersection"].append(float(hit_any))
             results[name]["hit_lesion_coverage"].append(float(hit_lesion))
+            results[name]["coverage_at_8"].append(float(coverage_at_8))
+            results[name]["laterality_grounding_acc"].append(float(laterality_grounding_acc))
             results[name]["overlap_ratio_token"].append(float(overlap_token))
             results[name]["overlap_ratio_lesion"].append(float(overlap_lesion))
             results[name]["combined"].append(float(combined))

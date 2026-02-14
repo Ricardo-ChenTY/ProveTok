@@ -5,7 +5,7 @@ from typing import List, Tuple, Dict, Optional, Any
 import numpy as np
 import torch
 from ..types import Token
-from ..grid.cells import Cell, cell_bounds, cell_bounds_int, cell_center_voxel
+from ..grid.cells import Cell, cell_bounds, cell_bounds_int, cell_center_voxel, cell_stable_id
 
 
 def _stable_int_hash(text: str) -> int:
@@ -210,7 +210,9 @@ class TokenEncoder:
             scores = [float(s) * float((1 + int(f.level)) ** p) for s, f in zip(scores, fields)]
 
         tokens: List[Token] = []
-        for token_id, (c, f, s) in enumerate(zip(ordered_cells, fields, scores)):
+        for c, f, s in zip(ordered_cells, fields, scores):
+            # Stable token id derived from octree path / Morton code (pp.md §3.2).
+            token_id = int(cell_stable_id(c))
             tokens.append(
                 Token(
                     token_id=token_id,
@@ -219,7 +221,8 @@ class TokenEncoder:
                     embedding=f.embedding,
                     score=float(s),
                     uncertainty=f.uncertainty,
-                    ref=str(c.id()),
+                    # Stable reference string for pp.md-style citations.
+                    ref=str(token_id),
                     bounds_voxel=tuple(int(x) for x in f.bounds_voxel),
                     center_voxel=tuple(float(x) for x in f.center_voxel),
                 )

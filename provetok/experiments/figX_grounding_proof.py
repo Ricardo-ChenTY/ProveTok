@@ -544,8 +544,11 @@ def main() -> None:
         "iou_union",
         "dice_union",
         "hit",
+        "hit_at_8",
         "hit_any_intersection",
         "hit_lesion_coverage",
+        "coverage_at_8",
+        "laterality_grounding_acc",
         "overlap_ratio_token",
         "overlap_ratio_lesion",
     ]
@@ -690,8 +693,11 @@ def main() -> None:
                 out_seed["provetok_lesionness"]["iou_union"].append(float(g_pt.get("iou_union", 0.0)))
                 out_seed["provetok_lesionness"]["dice_union"].append(float(g_pt.get("dice_union", 0.0)))
                 out_seed["provetok_lesionness"]["hit"].append(float(g_pt.get("hit", 0.0)))
+                out_seed["provetok_lesionness"]["hit_at_8"].append(float(g_pt.get("hit_at_8", 0.0)))
                 out_seed["provetok_lesionness"]["hit_any_intersection"].append(float(g_pt.get("hit_any_intersection", 0.0)))
                 out_seed["provetok_lesionness"]["hit_lesion_coverage"].append(float(g_pt.get("hit_lesion_coverage", 0.0)))
+                out_seed["provetok_lesionness"]["coverage_at_8"].append(float(g_pt.get("coverage_at_8", 0.0)))
+                out_seed["provetok_lesionness"]["laterality_grounding_acc"].append(float(g_pt.get("laterality_grounding_acc", 0.0)))
                 out_seed["provetok_lesionness"]["overlap_ratio_token"].append(float(g_pt.get("overlap_ratio_token", g_pt.get("overlap_ratio", 0.0))))
                 out_seed["provetok_lesionness"]["overlap_ratio_lesion"].append(float(g_pt.get("overlap_ratio_lesion", 0.0)))
 
@@ -707,8 +713,11 @@ def main() -> None:
                     out_seed[name]["iou_union"].append(float(g.get("iou_union", 0.0)))
                     out_seed[name]["dice_union"].append(float(g.get("dice_union", 0.0)))
                     out_seed[name]["hit"].append(float(g.get("hit", 0.0)))
+                    out_seed[name]["hit_at_8"].append(float(g.get("hit_at_8", 0.0)))
                     out_seed[name]["hit_any_intersection"].append(float(g.get("hit_any_intersection", 0.0)))
                     out_seed[name]["hit_lesion_coverage"].append(float(g.get("hit_lesion_coverage", 0.0)))
+                    out_seed[name]["coverage_at_8"].append(float(g.get("coverage_at_8", 0.0)))
+                    out_seed[name]["laterality_grounding_acc"].append(float(g.get("laterality_grounding_acc", 0.0)))
                     out_seed[name]["overlap_ratio_token"].append(float(g.get("overlap_ratio_token", g.get("overlap_ratio", 0.0))))
                     out_seed[name]["overlap_ratio_lesion"].append(float(g.get("overlap_ratio_lesion", 0.0)))
 
@@ -788,7 +797,15 @@ def main() -> None:
             paired[b_key][base] = {}
             pvals = []
             recs = []
-            keys_for_test = ["iou_union", "dice_union", "hit_any_intersection", "hit_lesion_coverage"]
+            keys_for_test = [
+                "iou_union",
+                "dice_union",
+                "hit_at_8",
+                "coverage_at_8",
+                "laterality_grounding_acc",
+                "hit_any_intersection",
+                "hit_lesion_coverage",
+            ]
             for k in keys_for_test:
                 # Pairing uses per-sample mean over seeds.
                 mats_pt = np.asarray([per_budget_seed[b_key][str(int(s))]["provetok_lesionness"][k] for s in cfg.seeds], dtype=np.float64)

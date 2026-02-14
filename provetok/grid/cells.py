@@ -15,6 +15,44 @@ class Cell:
     def id(self) -> str:
         return f"L{self.level}:{self.ix},{self.iy},{self.iz}"
 
+
+def _morton3d(ix: int, iy: int, iz: int, *, bits: int) -> int:
+    """3D Morton code (Z-order curve) with `bits` per axis.
+
+    Interleaves bits in the order (x, y, z) to produce an integer in
+    [0, 2^(3*bits) - 1]. This is deterministic and stable across runs.
+    """
+    x = int(ix)
+    y = int(iy)
+    z = int(iz)
+    b = int(bits)
+    if b < 0:
+        raise ValueError(f"bits must be >= 0 (got {bits})")
+    if x < 0 or y < 0 or z < 0:
+        raise ValueError(f"morton expects non-negative indices (got ix={ix}, iy={iy}, iz={iz})")
+    out = 0
+    for k in range(b):
+        out |= ((x >> k) & 1) << (3 * k)
+        out |= ((y >> k) & 1) << (3 * k + 1)
+        out |= ((z >> k) & 1) << (3 * k + 2)
+    return int(out)
+
+
+def cell_stable_id(cell: Cell) -> int:
+    """Stable, unique token id derived from the octree path (pp.md §3.2).
+
+    We use a breadth-first octree indexing scheme:
+    - node offset for level ℓ is sum_{j<ℓ} 8^j = (8^ℓ - 1) / 7
+    - within the level, use a 3D Morton code over (ix, iy, iz)
+
+    This yields contiguous ids across levels and remains stable across splits.
+    """
+    lvl = int(cell.level)
+    if lvl < 0:
+        raise ValueError(f"cell.level must be >= 0 (got {cell.level})")
+    offset = (8**lvl - 1) // 7 if lvl > 0 else 0
+    return int(offset + _morton3d(cell.ix, cell.iy, cell.iz, bits=lvl))
+
 _CELL_ID_RE = re.compile(r"^L(?P<level>\d+):\s*(?P<x>-?\d+)\s*,\s*(?P<y>-?\d+)\s*,\s*(?P<z>-?\d+)\s*$")
 _CELL_ID_LEGACY_RE = re.compile(r"^L(?P<level>\d+):\s*\(\s*(?P<x>-?\d+)\s*,\s*(?P<y>-?\d+)\s*,\s*(?P<z>-?\d+)\s*\)\s*$")
 

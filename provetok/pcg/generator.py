@@ -154,4 +154,14 @@ class ToyPCG:
             frames.append(Frame(finding=finding, polarity=pol, laterality=laterality, confidence=float(conf)))
 
         tmp = Generation(frames=frames, citations=citations, q=q, refusal=refusal, text="")
-        return Generation(frames=frames, citations=citations, q=q, refusal=refusal, text=render_generation_text(tmp))
+        citations_ref: Dict[int, List[str]] = {}
+        for k, ids in (citations or {}).items():
+            citations_ref[int(k)] = [str(getattr(token_by_id.get(int(tid)), "ref", tid)) for tid in (ids or []) if int(tid) in token_by_id]
+        return Generation(
+            frames=frames,
+            citations=citations,
+            q=q,
+            refusal=refusal,
+            citations_ref=citations_ref,
+            text=render_generation_text(tmp),
+        )

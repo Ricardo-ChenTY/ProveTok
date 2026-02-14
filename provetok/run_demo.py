@@ -8,8 +8,10 @@ import numpy as np
 
 from .data.io import load_volume
 from .pcg import ToyPCG, Llama2PCG, Llama2PCGConfig
+from .pcg.text_contract import enforce_pp_contract, render_findings, render_impression
 from .verifier import verify
 from .bet import run_refine_loop
+from .agent import AgentConfig, run_provetok_agent
 from .utils.artifact import build_artifact_meta
 from .verifier.rules import RULE_SET_VERSION
 from .verifier.taxonomy import TAXONOMY_VERSION
@@ -19,6 +21,7 @@ app = typer.Typer(add_completion=False)
 
 @app.command()
 def main(
+    loop: str = typer.Option("refine", help="Loop: refine | agent"),
     steps: int = typer.Option(3, help="Max refine iterations."),
     budget: int = typer.Option(64, help="Max tokens allowed (budget)."),
     seed: int = typer.Option(0, help="Random seed (deterministic demo)."),
@@ -44,16 +47,42 @@ def main(
     else:
         pcg_fn = ToyPCG(emb_dim=emb_dim, topk=topk, seed=seed)
 
-    res = run_refine_loop(
-        volume=vol,
-        budget_tokens=budget,
-        steps=steps,
-        generator_fn=lambda tokens: pcg_fn(tokens),
-        verifier_fn=lambda gen, tokens: verify(gen, tokens),
-        emb_dim=emb_dim,
-        seed=seed,
-        pcg_refresh_period=(steps if pcg == "llama2" else 1),
-    )
+    if loop == "agent":
+        agent_res = run_provetok_agent(
+            volume=vol,
+            generator_fn=lambda toks: pcg_fn(toks),
+            cfg=AgentConfig(
+                budget_tokens=int(budget),
+                emb_dim=int(emb_dim),
+                max_steps_per_finding=int(steps),
+                k_max_citations=max(1, int(topk)),
+            ),
+            seed=int(seed),
+        )
+        # Shim to reuse the artifact writer below.
+        res = type(
+            "AgentShim",
+            (),
+            {
+                "tokens": agent_res.tokens,
+                "gen": agent_res.generation,
+                "issues": agent_res.issues,
+                "trace": agent_res.trace,
+                "final_cells": agent_res.final_cells,
+                "stopped_reason": "agent",
+            },
+        )()
+    else:
+        res = run_refine_loop(
+            volume=vol,
+            budget_tokens=budget,
+            steps=steps,
+            generator_fn=lambda tokens: pcg_fn(tokens),
+            verifier_fn=lambda gen, tokens: verify(gen, tokens),
+            emb_dim=emb_dim,
+            seed=seed,
+            pcg_refresh_period=(steps if pcg == "llama2" else 1),
+        )
 
     repo_root = Path(__file__).resolve().parents[1]
     meta = build_artifact_meta(
@@ -69,6 +98,7 @@ def main(
 
     artifact = {
         "meta": meta.to_dict(),
+        "loop": str(loop),
         "tokens": [
             {
                 "token_id": t.token_id,
@@ -80,12 +110,20 @@ def main(
         ],
         "frames": [f.__dict__ for f in res.gen.frames],
         "citations": res.gen.citations,
+        "citations_ref": res.gen.citations_ref,
         "q": res.gen.q,
         "refusal": res.gen.refusal,
         "text": res.gen.text,
+        "pp_findings": [],
+        "pp_impression": "",
         "issues": [i.__dict__ for i in res.issues],
-        "refine_trace": [t.__dict__ for t in res.trace],
+        "refine_trace": [getattr(t, "__dict__", {}) for t in res.trace],
     }
+
+    gen_pp = enforce_pp_contract(res.gen, res.tokens, k_max=8)
+    findings_lines = render_findings(gen_pp, k_max=8)
+    artifact["pp_findings"] = findings_lines
+    artifact["pp_impression"] = render_impression(findings_lines)
 
     rprint("[bold green]=== ProveTok v0 Artifact (JSON) ===[/bold green]")
 
