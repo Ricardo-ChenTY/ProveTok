@@ -223,9 +223,9 @@ def run_refusal_calibration(cfg: RefusalCalibConfig) -> Dict[str, Any]:
         max_critical_miss_rate=cfg.max_critical_miss_rate,
         num_bins=10,
     )
-    # Stricter-than-proof anti-gaming cap: we keep the paper-grade proof gate at 0.20
-    # (see scripts/proof_check.py), but use a tighter cap in the calibration run so the
-    # selected policy has margin and is less likely to sit exactly on the boundary.
+    # Stricter-than-proof anti-gaming cap: paper-grade gate uses 0.20, but we use a tighter
+    # cap in calibration so the selected policy has margin and is less likely to sit exactly
+    # on the boundary.
     max_refusal_rate = 0.15
     # Calibrate q_k for support/reliability using the dev set (ECE should be meaningful).
     q_calibration = calibrator.fit_q_calibration_map(generations, ground_truths, issues_list=issues_list)

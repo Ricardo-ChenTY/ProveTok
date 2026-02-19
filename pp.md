@@ -52,8 +52,8 @@
 **模糊点**：你 proposal 同时提 CT-RATE / RadGenome / CTRG-548K；主文必须“主线一致”。
 **默认选择（最 reviewer-proof）**：
 
-* **主实验：RadGenome-Chest CT（因为能评估 evidence grounding）**，它建立在 CT-RATE 上，并提供 197 类器官 mask、665K grounded report sentences、1.2M grounded VQA。([Nature][2])
-* **补充实验：CT-RATE 报告生成（对齐 3D RRG 文献）**，并遵循 RRG-DPO 所述 split：train=24,128 volumes/20,000 patients；official test 再分 val=360/300、test=1204/1004（你可按同法复现）。([MICCAI Papers][3])
+* **主实验：CT-RATE 报告生成（对齐 3D RRG 文献）**：对齐 RRG-DPO 所述预处理与指标口径；official split 复现可做加分项（本仓库当前主线先不依赖 official split）。([MICCAI Papers][3])
+* **扩展（DEFERRED）：RadGenome-Chest CT**：具备 grounded sentence↔mask，可用于定量评估 citation grounding，但当前主线先不把它作为“必须项”。([Nature][2])
 * **CTRG-548K（1,804 pairs）** 只做附录“可比性”实验：Dia-LLaMA 明确写了他们用 1,804 CT-report pairs（80/20 split）。([MICCAI Papers][4])
 
 ### A6. 你承诺的学习部分：IL 还是 DPO（二选一）
@@ -82,7 +82,7 @@ Radiology report generation for 3D chest CT has recently accelerated with multim
 
 We propose **ProveTok-Agent**, a new inference-time paradigm for **proof-carrying** 3D CT reporting under a strict **evidence budget**. The system enforces a *proof contract* in which each finding is emitted with explicit citations to a deterministic hierarchy of 3D spatial tokens (ProveTok). A hard, deterministic verifier audits every finding for missing citations, insufficient spatial granularity, and laterality inconsistencies. When issues are detected, ProveTok-Agent performs **budgeted evidence acquisition** by selectively splitting spatial tokens (octree refinement) and rewriting the affected finding—mimicking the “zoom-and-confirm” workflow of radiologists—while respecting a fixed token budget. To improve acquisition decisions beyond heuristics, we further train a lightweight split-policy via **direct preference optimization (DPO)** on verifier-derived preferences.
 
-We evaluate on RadGenome-Chest CT (grounded sentences with segmentation masks) and CT-RATE (paired CT volumes and free-text reports). RadGenome provides 197 organ masks, 665K grounded report sentences, and 1.2M grounded VQA pairs, enabling direct measurement of evidence grounding quality.([Nature][2]) We report (i) standard RRG metrics (BLEU/METEOR/ROUGE-L, CheXbert F1, RadGraph, RadCliQ, GREEN, RaTEScore) and (ii) new proof-centric reliability curves that quantify issue rate vs evidence budget.([ACL Anthology][5])
+We evaluate on CT-RATE (paired CT volumes and free-text reports) with RRG-DPO-comparable preprocessing and report a Table1-style metric suite (BLEU/METEOR/ROUGE-L, CheXbert, RadGraph, RadCliQ, GREEN, RaTEScore), plus proof-centric reliability under a fixed evidence budget. Grounding evaluation on RadGenome-Chest CT is treated as a **deferred extension** when available.([Nature][2])
 
 ---
 
@@ -118,7 +118,7 @@ CT2Rep introduced an early dedicated approach for generating radiology reports f
 ### 2.2 Datasets enabling 3D CT report learning and grounding
 
 CT-RATE is a large public dataset pairing 3D chest CT volumes with free-text reports, consisting of 25,692 non-contrast CT scans from 21,304 patients and expanded reconstructions; it also enables CT-CLIP and CT-CHAT.([arXiv][9])
-RadGenome-Chest CT extends CT-RATE with segmentation masks and grounded report sentences, providing 197 organ masks, 665K grounded report sentences, and 1.2M grounded VQA pairs.([Nature][2]) This makes RadGenome uniquely suitable for **quantitative evaluation of citation grounding** in 3D CT reporting.
+[DEFERRED] RadGenome-Chest CT extends CT-RATE with segmentation masks and grounded report sentences, providing 197 organ masks, 665K grounded report sentences, and 1.2M grounded VQA pairs.([Nature][2]) This makes RadGenome uniquely suitable for **quantitative evaluation of citation grounding** in 3D CT reporting.
 
 ### 2.3 Clinical alignment and evaluation metrics
 
@@ -217,7 +217,7 @@ and decode a small set of ids (top-k or sampled without replacement).
 
 **Training signal for citations (main paper, no RL):**
 
-* On RadGenome, we have sentence↔region grounding; we map each grounded region mask to the overlapping ProveTok cells, giving supervised citation sets.([Nature][2])
+* [DEFERRED] On RadGenome, we have sentence↔region grounding; we map each grounded region mask to the overlapping ProveTok cells, giving supervised citation sets.([Nature][2])
 * On CT-RATE-only cases, we train text generation normally and optionally use weak citation supervision (Appendix).
 
 ### 4.4 Hard verifier (deterministic, auditable)
@@ -308,8 +308,8 @@ Show the “preference generation” pipeline: a state → multiple candidate sp
 
 ### 6.1 Datasets and splits
 
-**RadGenome-Chest CT (main).**
-Built on CT-RATE, RadGenome provides:
+**[DEFERRED] RadGenome-Chest CT (extension).**
+[DEFERRED] Built on CT-RATE, RadGenome provides:
 
 * 197 organ-level segmentation categories,
 * 665K grounded report sentences linked to segmentation masks,
@@ -326,7 +326,7 @@ We include the commonly reproduced 1,804-pair setting described in Dia-LLaMA (80
 ### 6.2 Preprocessing
 
 We standardize voxel spacing and volume size following prior work for CT-RATE comparability. In particular, RRG-DPO reports resampling to 0.75×0.75×1.5 mm³ and center-cropping/padding to 480×480×240 voxels; we adopt this pipeline for CT-RATE experiments.([MICCAI Papers][3])
-For RadGenome, we follow its provided standardized volumes/masks (and report any resampling in Appendix if we unify pipelines).([Nature][2])
+[DEFERRED] For RadGenome, we follow its provided standardized volumes/masks (and report any resampling in Appendix if we unify pipelines).([Nature][2])
 
 ### 6.3 Compared methods (baselines)
 
@@ -383,7 +383,7 @@ We report:
 
 We plot **reliability–budget Pareto curves**: WeightedIssue vs token budget (B).
 
-#### Evidence grounding metrics (RadGenome only)
+#### [DEFERRED] Evidence grounding metrics (RadGenome extension)
 
 Using grounded sentence↔mask annotations:
 
@@ -451,15 +451,15 @@ Rows:
 * “While several baselines improve textual/clinical metrics, they do not optimize for auditable evidence. Our proof-centric loop yields consistently lower verifier issues under fixed budgets, without degrading clinical efficacy metrics.”
 * “Post-hoc citation wrappers do not close the gap, suggesting that evidence acquisition must be integrated into the generation loop rather than appended after generation.”
 
-### 7.3 Grounding table (RadGenome)
+### 7.3 [DEFERRED] Grounding table (RadGenome extension)
 
-**Table 2 (RadGenome validation/test).**
+**[DEFERRED] Table 2 (RadGenome validation/test).**
 Columns: Hit@8 / Coverage@8 / Laterality-grounding-acc / WeightedIssue@B=128 and @B=256.
 Rows: same as above; baselines use wrapper citations.
 
 **写作要点：**
 
-* 强调：RadGenome 提供 grounded sentence↔mask，因此 citation quality 可定量评估。([Nature][2])
+* [DEFERRED] 强调：RadGenome 提供 grounded sentence↔mask，因此 citation quality 可定量评估。([Nature][2])
 * 你的系统若真的 work，应该在 Hit/Coverage 上显著更高，且 laterality grounding 更稳定。
 
 ### 7.4 Ablation table (你两大贡献逐条“不可替代”)
@@ -577,7 +577,7 @@ Ours: +Split-DPO \\
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{pareto_issue_budget.pdf}
-\caption{Reliability--budget Pareto curves on CT-RATE/RadGenome. Lower is better.}
+\caption{Reliability--budget Pareto curves on CT-RATE (RadGenome extension is deferred). Lower is better.}
 \end{figure}
 ```
 
@@ -671,7 +671,7 @@ Ours: +Split-DPO \\
 
 2. **“verifier 规则太简单，临床事实性没保证。”**
 
-* 回击要点：我们主文刻意只承诺 **laterality+granularity+citation contract** 的 hard safety（这些是 3D 最常见、可确定性审计的问题），并用 RadGenome grounding 指标证明 citations 不是摆设。([Nature][2])
+* 回击要点：我们主文刻意只承诺 **laterality+granularity+citation contract** 的 hard safety（这些是 3D 最常见、可确定性审计的问题）。RadGenome grounding 作为证明 citations 非摆设的路径属于 [DEFERRED] 扩展证据。([Nature][2])
 
 3. **“learned split 可能只是 overfit / 或者不如把 token 直接变多。”**
 

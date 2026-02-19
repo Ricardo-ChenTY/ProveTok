@@ -4,9 +4,50 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+
+
+def _find_latest_current_checkpoint(save_dir: Path) -> Path | None:
+    candidates: list[tuple[int, Path]] = []
+    for p in save_dir.glob("current_checkpoint_*.pth"):
+        try:
+            epoch = int(p.stem.split("_")[-1])
+        except Exception:
+            epoch = -1
+        candidates.append((epoch, p))
+    if not candidates:
+        return None
+    _epoch, best = max(candidates, key=lambda t: t[0])
+    return best
+
+
+def _ensure_model_best(save_dir: Path) -> None:
+    """CT2Rep may not write model_best.pth if early-stop happens between save_period checkpoints.
+
+    Our pipeline expects a stable path, so we create model_best.pth as a hardlink (or copy fallback)
+    to the latest saved current_checkpoint_*.pth.
+    """
+
+    best_path = save_dir / "model_best.pth"
+    if best_path.exists():
+        return
+
+    latest = _find_latest_current_checkpoint(save_dir)
+    if latest is None:
+        print(f"[warn] No checkpoint found in {save_dir} (expected current_checkpoint_*.pth).", file=sys.stderr)
+        return
+
+    try:
+        os.link(latest, best_path)
+        action = "hardlink"
+    except Exception:
+        shutil.copy2(latest, best_path)
+        action = "copy"
+
+    print(f"[warn] model_best.pth missing; created via {action}: {best_path} -> {latest}", file=sys.stderr)
 
 
 def _default_ct2rep_args() -> SimpleNamespace:
@@ -237,6 +278,8 @@ def main() -> None:
 
     trainer = Trainer(model, criterion, metrics, optimizer, args, lr_scheduler, train_dl, val_dl, val_dl)
     trainer.train()
+
+    _ensure_model_best(save_dir)
 
 
 if __name__ == "__main__":

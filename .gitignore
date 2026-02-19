@@ -78,3 +78,15 @@ paper/*.lot
 paper/*.fls
 paper/*.fdb_latexmk
 paper/*.synctex.gz
+
+# LaTeX build artifacts (legacy papers)
+docs/legacy/**/paper/*.aux
+docs/legacy/**/paper/*.bbl
+docs/legacy/**/paper/*.blg
+docs/legacy/**/paper/*.out
+docs/legacy/**/paper/*.toc
+docs/legacy/**/paper/*.lof
+docs/legacy/**/paper/*.lot
+docs/legacy/**/paper/*.fls
+docs/legacy/**/paper/*.fdb_latexmk
+docs/legacy/**/paper/*.synctex.gz

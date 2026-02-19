@@ -47,7 +47,7 @@
 - [ ] P0102: 跑通 CT2Rep full + Table1 full，并同步台账
   - Linked claims: C0101
   - Definition of done:
-    - `E0228 full` 产出 `/data/provetok_runs/ct2rep_ct_rate_100g_rrg_dpo_full/model_best.pth`；
+    - `E0228 full` 产出 `/data/provetok_runs/ct2rep_ct_rate_100g_rrg_dpo_full/model_best.pth`（若 CT2Rep trainer 未写出 best，wrapper 会将最新 `current_checkpoint_*.pth` 链接/复制为 `model_best.pth`）；
     - `E0229 full` 产出 `outputs/E0229-ct2rep_pred_full/preds_ct2rep.jsonl`（覆盖 test=58）；
     - `E0230 full` 产出 `outputs/E0230-table1_with_ct2rep_full/paper_metrics.json`。
   - Verification: `python scripts/rd_queue.py sync`
