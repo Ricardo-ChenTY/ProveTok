@@ -66,6 +66,8 @@ class Llama2RefusalPilotConfig:
     llama2_contract_mode: str = "full"  # "free_form" | "schema_only" | "schema_citations" | "full"
     llama2_citation_source: str = "score_override"  # "score_override" | "llm"
     llama2_max_frames: int = 1
+    llama2_lora_adapter: str = ""  # optional LoRA/PEFT adapter path (pp.md §6.6)
+    llama2_lora_merge: bool = False   # optionally merge adapter weights for inference
     pcg_refresh_period: int = 5
     max_steps: int = 10
 
@@ -144,7 +146,28 @@ def _override_q_from_issues(gen: Generation, issues: List[Issue]) -> Generation:
             q[int(k)] = 1.0
             continue
         q[int(k)] = 0.0 if int(k) in unsupported else 1.0
-    return Generation(frames=gen.frames, citations=gen.citations, q=q, refusal=gen.refusal, text=gen.text)
+    from ..pcg.narrative import render_generation_text
+
+    tmp = Generation(
+        frames=gen.frames,
+        citations=gen.citations,
+        q=q,
+        refusal=gen.refusal,
+        citations_ref=getattr(gen, 'citations_ref', None),
+        text="",
+        impression=str(getattr(gen, 'impression', '') or ''),
+        report_text=str(getattr(gen, 'report_text', '') or ''),
+    )
+    return Generation(
+        frames=tmp.frames,
+        citations=tmp.citations,
+        q=tmp.q,
+        refusal=tmp.refusal,
+        citations_ref=getattr(tmp, 'citations_ref', None),
+        text=render_generation_text(tmp),
+        impression=str(getattr(tmp, 'impression', '') or ''),
+        report_text=str(getattr(tmp, 'report_text', '') or ''),
+    )
 
 
 def _run_llama2_once(
@@ -297,6 +320,8 @@ def run_pilot(cfg: Llama2RefusalPilotConfig) -> Dict[str, Any]:
             contract_mode=str(cfg.llama2_contract_mode),
             citation_source=str(cfg.llama2_citation_source),
             max_frames=int(cfg.llama2_max_frames),
+            lora_adapter_path=str(cfg.llama2_lora_adapter),
+            lora_merge=bool(cfg.llama2_lora_merge),
         )
     )
 
@@ -412,6 +437,8 @@ def main() -> None:
     ap.add_argument("--llama2-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full"])
     ap.add_argument("--llama2-citation-source", type=str, default="score_override", choices=["score_override", "llm"])
     ap.add_argument("--llama2-max-frames", type=int, default=1)
+    ap.add_argument("--llama2-lora-adapter", type=str, default="", help="Optional LoRA/PEFT adapter path")
+    ap.add_argument("--llama2-lora-merge", action="store_true", help="Merge LoRA adapter into base model (if supported)")
     ap.add_argument("--max-refusal-rate", type=float, default=0.20)
     ap.add_argument("--max-refusal-ece", type=float, default=0.15)
     ap.add_argument("--max-critical-miss-rate", type=float, default=0.05)

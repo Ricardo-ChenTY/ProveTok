@@ -59,6 +59,7 @@ class Generation:
     citations_ref: Optional[Dict[int, List[TokenRef]]] = None
     text: str = ""                    # deterministic narrative (dual-channel protocol)
     impression: str = ""              # optional free-form summary (pp.md contract layer)
+    report_text: str = ""             # optional human-readable report text (not required to round-trip)
 
     def __post_init__(self) -> None:
         # Keep backward compatibility: default empty citations_ref.

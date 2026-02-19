@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import re
-from dataclasses import asdict
 from typing import List, Optional
 
-from ..types import Frame
 from ..pcg.schema import FINDINGS, LOCATIONS
+from ..types import Frame
 
 
-_SENT_SPLIT = re.compile(r"[\\n\\.]+")
+_SENT_SPLIT = re.compile(r"[\n\.]+")
 
 
 def _normalize(text: str) -> str:
@@ -29,7 +28,7 @@ def _detect_laterality(sent: str) -> str:
 def _detect_polarity(sent: str) -> str:
     s = sent
     # Simple negation cues.
-    if re.search(r"\\bno\\b", s) or re.search(r"\\bwithout\\b", s) or "absent" in s or "negative for" in s:
+    if re.search(r"\bno\b", s) or re.search(r"\bwithout\b", s) or "absent" in s or "negative for" in s:
         return "absent"
     return "present"
 
@@ -75,7 +74,7 @@ def _size_bin_from_mm(mm: float) -> str:
 
 def _detect_size_bin(sent: str) -> str:
     s = sent
-    m = re.search(r"(\\d+(?:\\.\\d+)?)\\s*mm", s)
+    m = re.search(r"(\d+(?:\.\d+)?)\s*mm", s)
     if not m:
         return "unspecified"
     try:
@@ -128,6 +127,7 @@ class FrameExtractor:
                 location = "unspecified"
             size_bin = _detect_size_bin(sent)
             uncertain = _detect_uncertain(sent)
+
             # Deterministic confidence heuristic.
             confidence = 0.85 if polarity == "present" else 0.8
             if uncertain:

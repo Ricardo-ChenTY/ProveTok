@@ -63,6 +63,7 @@ def run_refine_loop(
     emb_dim: int = 32,
     seed: int = 0,
     encoder: Optional[Any] = None,
+    affine_zyx: Optional[Any] = None,
     require_full_budget: bool = False,
     # Evidence Head 相关参数
     evidence_head: Optional[EvidenceHead] = None,
@@ -141,7 +142,7 @@ def run_refine_loop(
             lambda_uncertainty=lambda_uncertainty,
         )
 
-    token_encoder = TokenEncoder(volume=volume, emb_dim=emb_dim, seed=seed, encoder=encoder)
+    token_encoder = TokenEncoder(volume=volume, emb_dim=emb_dim, seed=seed, encoder=encoder, affine_zyx=affine_zyx)
 
     def _apply_token_scores(tokens_in: List[Token]) -> List[Token]:
         if token_score_fn is None or not tokens_in:

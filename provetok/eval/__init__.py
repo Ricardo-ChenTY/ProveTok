@@ -37,6 +37,7 @@ from .scaling import (
 from .stats import (
     PairedBootstrapResult,
     paired_bootstrap_mean_diff,
+    paired_wilcoxon_signed_rank,
     holm_bonferroni,
 )
 
@@ -63,4 +64,25 @@ from .metrics_proof import (
     ProofWeights,
     attach_posthoc_citations,
     compute_proof_metrics,
+)
+
+from .metrics_chexbert import (
+    CheXbertConfig,
+    CheXbertLabeler,
+    MissingCheXbertDependency,
+    compute_chexbert_prf,
+)
+
+from .metrics_radgraph import (
+    RadGraphConfig,
+    RadGraphScorer,
+    MissingRadGraphDependency,
+    compute_radgraph_rewards,
+    compute_radgraph_f1,
+)
+
+from .metrics_ratescore import (
+    RaTEScoreConfig,
+    RaTEScoreScorer,
+    MissingRaTEScoreDependency,
 )

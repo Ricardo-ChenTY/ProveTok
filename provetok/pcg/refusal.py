@@ -507,7 +507,16 @@ def apply_q_calibration_to_generation(generation: Generation, q_calibration: Dic
         return float(max(0.0, min(1.0, q)))
 
     new_q = {int(k): _apply(float(v)) for k, v in (generation.q or {}).items()}
-    tmp = Generation(frames=generation.frames, citations=generation.citations, q=new_q, refusal=generation.refusal, text="")
+    tmp = Generation(
+        frames=generation.frames,
+        citations=generation.citations,
+        q=new_q,
+        refusal=generation.refusal,
+        citations_ref=getattr(generation, 'citations_ref', None),
+        text="",
+        impression=str(getattr(generation, 'impression', '') or ''),
+        report_text=str(getattr(generation, 'report_text', '') or ''),
+    )
     from .narrative import render_generation_text
 
     return Generation(
@@ -515,7 +524,10 @@ def apply_q_calibration_to_generation(generation: Generation, q_calibration: Dic
         citations=tmp.citations,
         q=tmp.q,
         refusal=tmp.refusal,
+        citations_ref=getattr(tmp, 'citations_ref', None),
         text=render_generation_text(tmp),
+        impression=str(getattr(tmp, 'impression', '') or ''),
+        report_text=str(getattr(tmp, 'report_text', '') or ''),
     )
 
 
@@ -583,7 +595,10 @@ def apply_refusal_to_generation(
         citations=generation.citations,
         q=generation.q,
         refusal=new_refusal,
+        citations_ref=getattr(generation, 'citations_ref', None),
         text="",
+        impression=str(getattr(generation, 'impression', '') or ''),
+        report_text=str(getattr(generation, 'report_text', '') or ''),
     )
     from .narrative import render_generation_text
     return Generation(
@@ -591,7 +606,10 @@ def apply_refusal_to_generation(
         citations=tmp.citations,
         q=tmp.q,
         refusal=tmp.refusal,
+        citations_ref=getattr(tmp, 'citations_ref', None),
         text=render_generation_text(tmp),
+        impression=str(getattr(tmp, 'impression', '') or ''),
+        report_text=str(getattr(tmp, 'report_text', '') or ''),
     )
 
 

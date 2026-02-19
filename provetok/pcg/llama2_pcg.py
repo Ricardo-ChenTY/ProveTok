@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from ..data.frame_extractor import FrameExtractor
+from ..data.frame_extractor import FrameExtractor, frames_to_report
 from ..types import Frame, Generation, Token
 from ..grid.cells import parse_cell_id
 from .narrative import render_generation_text
@@ -79,6 +79,8 @@ class Llama2PCGConfig:
     fallback_finding: str = "opacity"  # used when parsing fails or frames are empty
     contract_mode: str = "full"        # "free_form" | "schema_only" | "schema_citations" | "full"
     citation_source: str = "score_override"  # "score_override" | "llm"
+    lora_adapter_path: str = ""  # optional PEFT adapter (LoRA) path
+    lora_merge: bool = False        # optionally merge adapter weights for inference
 
 
 def build_llama2_json_prompt(tokens: List[Token], *, cfg: Llama2PCGConfig, max_tokens_in_prompt: Optional[int] = None) -> str:
@@ -308,6 +310,7 @@ def sanitize_generation_dict(
         refusal=refusal,
         citations_ref=citations_ref,
         text=render_generation_text(gen_tmp),
+        report_text=frames_to_report(frames),
     )
 
 
@@ -346,6 +349,25 @@ class Llama2PCG:
                 low_cpu_mem_usage=True,
             )
         self.model.eval()
+
+        # Optional LoRA/PEFT adapter loading (pp.md §6.6).
+        lora_path = str(getattr(cfg, "lora_adapter_path", "") or "").strip()
+        if lora_path:
+            try:
+                from peft import PeftModel  # type: ignore
+            except Exception as e:  # noqa: BLE001
+                raise RuntimeError(
+                    "Loading LoRA adapters requires optional dependency `peft`. "
+                    "Install via `pip install peft` (and bitsandbytes for 8-bit base models)."
+                ) from e
+            self.model = PeftModel.from_pretrained(self.model, lora_path, is_trainable=False)
+            if bool(getattr(cfg, "lora_merge", False)) and hasattr(self.model, "merge_and_unload"):
+                try:
+                    self.model = self.model.merge_and_unload()
+                except Exception:
+                    # Some quantized backends may not support merging; keep adapter attached.
+                    pass
+            self.model.eval()
 
     def _build_prompt(self, tokens: List[Token], *, max_tokens_in_prompt: Optional[int] = None) -> str:
         mode = str(getattr(self.cfg, "contract_mode", "full")).strip().lower()
@@ -419,8 +441,26 @@ class Llama2PCG:
                 int(i): bool(q[int(i)] < float(self.cfg.tau_refuse) and str(getattr(fr, "polarity", "")) in ("present", "positive"))
                 for i, fr in enumerate(frames)
             }
-            # For free-form mode, preserve the raw text channel (not the deterministic narrative).
-            return Generation(frames=frames, citations=citations, q=q, refusal=refusal, text=str(text))
+            # Keep the raw free-form report text separate from the dual-channel narrative.
+            citations_ref = {int(i): [] for i in range(len(frames))}
+            tmp = Generation(
+                frames=frames,
+                citations=citations,
+                q=q,
+                refusal=refusal,
+                citations_ref=citations_ref,
+                text="",
+                report_text=str(text),
+            )
+            return Generation(
+                frames=frames,
+                citations=citations,
+                q=q,
+                refusal=refusal,
+                citations_ref=citations_ref,
+                text=render_generation_text(tmp),
+                report_text=str(text),
+            )
 
         try:
             d = self._parse_json(text)
@@ -453,9 +493,19 @@ class Llama2PCG:
                 citations={0: []},
                 q={0: qv},
                 refusal={0: bool(qv < float(self.cfg.tau_refuse))},
+                citations_ref={0: []},
                 text="",
+                report_text=frames_to_report([fr]),
             )
-            gen = Generation(frames=gen.frames, citations=gen.citations, q=gen.q, refusal=gen.refusal, text=render_generation_text(gen))
+            gen = Generation(
+                frames=gen.frames,
+                citations=gen.citations,
+                q=gen.q,
+                refusal=gen.refusal,
+                citations_ref=gen.citations_ref,
+                text=render_generation_text(gen),
+                report_text=str(getattr(gen, 'report_text', '') or ''),
+            )
 
         # Contract modes:
         # - schema_only: citations are intentionally absent
@@ -470,6 +520,8 @@ class Llama2PCG:
                 refusal=gen.refusal,
                 citations_ref=citations_ref,
                 text=gen.text,
+                impression=str(getattr(gen, 'impression', '') or ''),
+                report_text=str(getattr(gen, 'report_text', '') or ''),
             )
             return gen
 
@@ -547,7 +599,16 @@ class Llama2PCG:
             top_ids = [int(t.token_id) for t in chosen]
             citations = {int(i): list(top_ids) for i in range(len(gen.frames))}
             citations_ref = {int(i): [str(int(x)) for x in top_ids] for i in range(len(gen.frames))}
-            gen = Generation(frames=gen.frames, citations=citations, q=gen.q, refusal=gen.refusal, citations_ref=citations_ref, text="")
+            gen = Generation(
+                frames=gen.frames,
+                citations=citations,
+                q=gen.q,
+                refusal=gen.refusal,
+                citations_ref=citations_ref,
+                text="",
+                impression=str(getattr(gen, 'impression', '') or ''),
+                report_text=str(getattr(gen, 'report_text', '') or ''),
+            )
             gen = Generation(
                 frames=gen.frames,
                 citations=citations,
@@ -555,5 +616,7 @@ class Llama2PCG:
                 refusal=gen.refusal,
                 citations_ref=citations_ref,
                 text=render_generation_text(gen),
+                impression=str(getattr(gen, 'impression', '') or ''),
+                report_text=str(getattr(gen, 'report_text', '') or ''),
             )
         return gen

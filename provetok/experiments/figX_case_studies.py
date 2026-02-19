@@ -218,6 +218,8 @@ def main() -> None:
     ap.add_argument("--llama2-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full"])
     ap.add_argument("--llama2-citation-source", type=str, default="score_override", choices=["score_override", "llm"])
     ap.add_argument("--llama2-max-frames", type=int, default=1)
+    ap.add_argument("--llama2-lora-adapter", type=str, default="", help="Optional LoRA/PEFT adapter path")
+    ap.add_argument("--llama2-lora-merge", action="store_true", help="Merge LoRA adapter into base model (if supported)")
     ap.add_argument("--encoder-device", type=str, default="cuda")
 
     ap.add_argument("--output-dir", type=str, default="outputs/E0163-cases")
@@ -284,6 +286,8 @@ def main() -> None:
             contract_mode=str(args.llama2_contract_mode),
             citation_source=str(args.llama2_citation_source),
             max_frames=int(args.llama2_max_frames),
+            lora_adapter_path=str(args.llama2_lora_adapter),
+            lora_merge=bool(args.llama2_lora_merge),
         )
     )
 

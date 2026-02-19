@@ -14,12 +14,20 @@ matplotlib>=3.7
 transformers>=4.36
 accelerate>=0.25
 # bitsandbytes>=0.41     # 4-bit/8-bit 量化, Windows 需要特殊版本
+# peft>=0.10            # LoRA/PEFT adapters for LLM backend
 
 # --- Text metrics (paper-grade) ---
 sacrebleu>=2.4
 rouge-score>=0.1.2
 bert-score>=0.3.13
+nltk>=3.8
 
 # --- 真实数据加载 (可选) ---
-# nibabel>=5.0           # NIfTI 文件读取
+nibabel>=5.0
 # monai>=1.3             # 医学影像工具
+
+# --- Paper metrics (optional, heavy) ---
+# radgraph>=0.1.18        # RadGraph F1 (downloads models on first use)
+# RaTEScore>=0.6.0        # Entity-aware text similarity (downloads models on first use)
+# medspacy>=1.3           # RaTEScore sentence splitting dependency
+# appdirs jsonpickle dotmap h5py  # radgraph deps

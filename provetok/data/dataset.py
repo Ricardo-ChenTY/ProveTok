@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from ..types import Frame
 from .frame_extractor import FrameExtractor
-from .io import load_mask, load_volume
+from .io import load_mask, load_volume, load_volume_and_affine
 from .manifest_schema import ManifestRecord, get_record_mask_path, load_manifest
 
 
@@ -124,8 +124,26 @@ class ManifestDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         r = self.records[int(idx)]
-        vol = load_volume(r.volume_path, seed=self.seed + int(idx))
+        vol, affine_zyx = load_volume_and_affine(r.volume_path, seed=self.seed + int(idx))
+        orig_shape = tuple(int(x) for x in vol.shape)
         vol = _resize_volume(vol, resize_shape=self.resize_shape)
+
+        # If we resized the tensor, adjust the affine approximately so token mm
+        # geometry remains consistent with the returned volume.
+        if affine_zyx is not None and tuple(int(x) for x in vol.shape) != orig_shape:
+            dz0, dy0, dx0 = (float(orig_shape[0]), float(orig_shape[1]), float(orig_shape[2]))
+            dz1, dy1, dx1 = (float(vol.shape[0]), float(vol.shape[1]), float(vol.shape[2]))
+            if dz1 > 0 and dy1 > 0 and dx1 > 0:
+                S = np.array(
+                    [
+                        [dz0 / dz1, 0.0, 0.0, 0.0],
+                        [0.0, dy0 / dy1, 0.0, 0.0],
+                        [0.0, 0.0, dx0 / dx1, 0.0],
+                        [0.0, 0.0, 0.0, 1.0],
+                    ],
+                    dtype=np.float64,
+                )
+                affine_zyx = np.asarray(affine_zyx, dtype=np.float64) @ S
 
         report_text = str(r.report_text or "")
         frames = self.extractor.extract_frames(report_text) if report_text else []
@@ -151,6 +169,7 @@ class ManifestDataset(Dataset):
             "lesion_masks": lesion_masks,
             "report_text": report_text,
             "record": r,
+            "affine_zyx": affine_zyx,
         }
 
 
@@ -217,6 +236,7 @@ def _collate(samples: List[Dict[str, Any]]) -> Dict[str, Any]:
     sample_id = [s.get("sample_id", "") for s in samples]
     lesion_masks = [s.get("lesion_masks", {}) for s in samples]
     report_text = [s.get("report_text", "") for s in samples]
+    affines = [s.get("affine_zyx", None) for s in samples]
     out: Dict[str, Any] = {
         "volume": vols_t,
         "frames": frames,
@@ -225,6 +245,8 @@ def _collate(samples: List[Dict[str, Any]]) -> Dict[str, Any]:
         "report_text": report_text,
     }
     # Keep raw records when present (manifest datasets).
+    if any(a is not None for a in affines):
+        out["affine_zyx"] = affines
     if any("record" in s for s in samples):
         out["record"] = [s.get("record") for s in samples]
     return out

@@ -1,10 +1,29 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections import Counter
 import hashlib
 import json
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Sequence
+
+
+def compute_scan_hash(patient_id: str, study_date: str, series_uid: str) -> str:
+    """Compute a strict, protocol-locked scan hash.
+
+    This implements the ProtocolLock convention used by some manifest builders:
+    SHA256(patient_id||study_date||series_uid) as a hex string.
+
+    The intent is to produce a stable, split-safe identifier that does not
+    depend on filesystem paths.
+    """
+    h = hashlib.sha256()
+    h.update(str(patient_id or "").encode("utf-8"))
+    h.update(b"||")
+    h.update(str(study_date or "").encode("utf-8"))
+    h.update(b"||")
+    h.update(str(series_uid or "").encode("utf-8"))
+    return h.hexdigest()
 
 
 @dataclass(frozen=True)
@@ -42,6 +61,8 @@ class ManifestRecord:
             dd["mask_path"] = dd.pop("lesion_mask_path")
 
         scan_hash = str(dd.pop("scan_hash", dd.pop("sample_id", "")))
+        if not scan_hash and patient_id and study_date and series_uid:
+            scan_hash = compute_scan_hash(patient_id, study_date, series_uid)
         if not scan_hash:
             # Prefer a stable per-series id when present.
             scan_hash = str(series_uid or "")
@@ -182,3 +203,44 @@ def find_exact_duplicate_reports(records: Sequence[ManifestRecord]) -> List[List
             dupes.append(uniq)
     dupes.sort(key=lambda xs: (-len(xs), xs[0] if xs else ""))
     return dupes
+
+
+
+def summarize_manifest(records: Sequence[ManifestRecord]) -> Dict[str, Any]:
+    """Return a lightweight JSON-serializable summary for sanity checks."""
+
+    recs = list(records)
+
+    ds = Counter()
+    sp = Counter()
+    patients = set()
+    n_report = 0
+    n_masks = 0
+
+    for r in recs:
+        ds[str(getattr(r, "dataset", ""))] += 1
+        sp[str(getattr(r, "split", ""))] += 1
+        pid = str(getattr(r, "patient_id", "") or "")
+        if pid:
+            patients.add(pid)
+        if str(getattr(r, "report_text", "") or "").strip():
+            n_report += 1
+        if get_record_mask_path(r):
+            n_masks += 1
+
+    dupes = find_exact_duplicate_reports(recs)
+    top_dupes = dupes[:3]
+    max_dupe = max((len(g) for g in dupes), default=0)
+
+    return {
+        "num_records": int(len(recs)),
+        "datasets": dict(ds),
+        "splits": dict(sp),
+        "num_patients": int(len(patients)),
+        "num_with_report_text": int(n_report),
+        "num_with_masks": int(n_masks),
+        "manifest_revision": compute_manifest_revision(recs),
+        "num_exact_duplicate_report_groups": int(len(dupes)),
+        "max_exact_duplicate_report_group_size": int(max_dupe),
+        "top_exact_duplicate_report_groups": top_dupes,
+    }

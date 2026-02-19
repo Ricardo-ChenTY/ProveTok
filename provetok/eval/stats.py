@@ -150,3 +150,51 @@ def holm_bonferroni(p_values: Sequence[float]) -> List[float]:
         adjusted[idx] = running_max
 
     return [adjusted[i] for i in range(m)]
+
+
+def paired_wilcoxon_signed_rank(
+    a: Sequence[float],
+    b: Sequence[float],
+    *,
+    alternative: str = "two-sided",
+    zero_method: str = "wilcox",
+) -> Dict[str, float]:
+    """Paired Wilcoxon signed-rank test.
+
+    This is the paired non-parametric test referenced by pp.md (v1.1, §6.6).
+
+    Returns:
+        dict with keys: statistic, p_value, n
+
+    Notes:
+        - If all paired differences are zero, SciPy raises; we return p=1.0.
+        - Requires SciPy.
+    """
+    a_arr = np.asarray(list(a), dtype=np.float64)
+    b_arr = np.asarray(list(b), dtype=np.float64)
+    if a_arr.shape != b_arr.shape:
+        raise ValueError(f"Shape mismatch: a={a_arr.shape}, b={b_arr.shape}")
+
+    n = int(a_arr.shape[0])
+    if n == 0:
+        return {"statistic": 0.0, "p_value": 1.0, "n": 0}
+
+    try:
+        from scipy.stats import wilcoxon  # type: ignore
+    except Exception as e:  # noqa: BLE001
+        raise RuntimeError("paired_wilcoxon_signed_rank requires scipy") from e
+
+    try:
+        stat, p = wilcoxon(
+            a_arr,
+            b_arr,
+            zero_method=str(zero_method),
+            correction=False,
+            alternative=str(alternative),
+            mode="auto",
+        )
+    except ValueError:
+        # e.g., all differences are zero.
+        stat, p = 0.0, 1.0
+
+    return {"statistic": float(stat), "p_value": float(p), "n": int(n)}

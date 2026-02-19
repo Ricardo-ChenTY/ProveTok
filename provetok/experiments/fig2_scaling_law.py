@@ -88,6 +88,8 @@ class ScalingExperimentConfig:
     llama2_contract_mode: str = "full"  # "free_form" | "schema_only" | "schema_citations" | "full"
     llama2_citation_source: str = "score_override"  # "score_override" | "llm"
     llama2_max_frames: int = 1
+    llama2_lora_adapter: str = ""  # optional LoRA/PEFT adapter path (pp.md §6.6)
+    llama2_lora_merge: bool = False   # optionally merge adapter weights for inference
     pcg_refresh_period: int = 1
     encoder_backend: str = "toy"  # "toy" or "cnn3d"
     encoder_device: str = "cuda"
@@ -279,6 +281,7 @@ def run_single_budget(
         t0 = time.perf_counter()
         result = run_refine_loop(
             volume=volume,
+            affine_zyx=(s.get("affine_zyx") if samples is not None else None),
             budget_tokens=int(b_enc_target),
             steps=config.max_steps,
             generator_fn=generator_fn,
@@ -464,6 +467,8 @@ def run_scaling_experiment(
                     contract_mode=str(config.llama2_contract_mode),
                     citation_source=str(config.llama2_citation_source),
                     max_frames=int(config.llama2_max_frames),
+                    lora_adapter_path=str(config.llama2_lora_adapter),
+                    lora_merge=bool(config.llama2_lora_merge),
                 )
             )
             generator_fn = lambda toks: pcg(toks)
@@ -501,7 +506,8 @@ def run_scaling_experiment(
             masks = batch.get("lesion_masks", [{}])[0] or {}
             gt_frames = batch.get("frames", [[]])[0] or []
             report_text = str((batch.get("report_text") or [""])[0])
-            samples.append({"volume": vol, "lesion_masks": masks, "gt_frames": gt_frames, "report_text": report_text})
+            aff = (batch.get("affine_zyx") or [None])[0]
+            samples.append({"volume": vol, "lesion_masks": masks, "gt_frames": gt_frames, "report_text": report_text, "affine_zyx": aff})
 
     # 创建 Evidence Head
     evidence_head = None
@@ -794,6 +800,8 @@ def main():
     parser.add_argument("--llama2-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full"])
     parser.add_argument("--llama2-citation-source", type=str, default="score_override", choices=["score_override", "llm"])
     parser.add_argument("--llama2-max-frames", type=int, default=1)
+    parser.add_argument("--llama2-lora-adapter", type=str, default="", help="Optional LoRA/PEFT adapter path")
+    parser.add_argument("--llama2-lora-merge", action="store_true", help="Merge LoRA adapter into base model (if supported)")
     parser.add_argument("--pcg-refresh-period", type=int, default=1, help="Refresh PCG every N refine steps (LLM mode)")
     parser.add_argument("--encoder", type=str, default="toy", choices=["toy", "cnn3d"], help="3D encoder backend")
     parser.add_argument("--encoder-device", type=str, default="cuda", help="Device for encoder (e.g. cuda)")
@@ -835,6 +843,8 @@ def main():
         llama2_contract_mode=str(args.llama2_contract_mode),
         llama2_citation_source=str(args.llama2_citation_source),
         llama2_max_frames=int(args.llama2_max_frames),
+        llama2_lora_adapter=str(args.llama2_lora_adapter),
+        llama2_lora_merge=bool(args.llama2_lora_merge),
         pcg_refresh_period=int(args.pcg_refresh_period),
         encoder_backend=args.encoder,
         encoder_device=args.encoder_device,

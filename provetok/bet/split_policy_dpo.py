@@ -208,12 +208,23 @@ class DPOSplitPolicy:
         self.model.eval().to(torch.device(str(cfg.device)))
 
     @torch.no_grad()
-    def pick_cell(self, cells: List[Cell], tokens: List[Token], issues: List[Issue]) -> Optional[Cell]:
+    def pick_cell(
+        self,
+        cells: List[Cell],
+        tokens: List[Token],
+        issues: List[Issue],
+        *,
+        budget_frac: float = 0.0,
+        step_frac: float = 0.0,
+        **_kwargs,
+    ) -> Optional[Cell]:
         feats, ordered = featurize_split_actions(
             cells=cells,
             tokens=tokens,
             issues=issues,
             cfg=SplitFeaturizerConfig(max_depth=int(self.cfg.max_depth)),
+            budget_frac=float(budget_frac),
+            step_frac=float(step_frac),
         )
         if not ordered:
             return None

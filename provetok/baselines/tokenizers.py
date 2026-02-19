@@ -17,11 +17,49 @@ class BaseTokenizer(ABC):
         pass
 
 
-def _heuristic_cell_score(volume: torch.Tensor, cell: Cell) -> float:
-    """Cheap ROI heuristic score based on local variance (no embedding compute)."""
+def _infer_ct_like_score_norm(volume: torch.Tensor) -> tuple[float, float]:
+    """Infer a simple CT-like normalization for ROI heuristics.
+
+    Some datasets store volumes as non-HU values (e.g., uint16-ish 0..3000). Our
+    variance-based heuristics will otherwise saturate and collapse selection
+    (e.g., BET-Alg degenerates to a uniform grid).
+    """
+    try:
+        vmin = float(volume.min().item())
+        vmax = float(volume.max().item())
+    except Exception:
+        return (0.0, 1.0)
+
+    score_shift = 0.0
+    score_div = 1.0
+
+    # If data is all-positive and large, assume an implicit HU offset.
+    if vmin >= 0.0 and vmax > 50.0:
+        score_shift = -1024.0
+        vmin = vmin + score_shift
+        vmax = vmax + score_shift
+
+    # If still large-magnitude, scale into roughly [-1,1].
+    if max(abs(vmin), abs(vmax)) > 10.0:
+        score_div = 1000.0
+
+    return (float(score_shift), float(score_div))
+
+
+def _heuristic_cell_score(volume: torch.Tensor, cell: Cell, *, score_shift: float, score_div: float) -> float:
+    """Cheap ROI heuristic score based on normalized local variance (no embedding compute)."""
     bounds = cell_bounds(cell, shape=tuple(volume.shape))
     patch = volume[bounds[0], bounds[1], bounds[2]]
-    var = float(patch.var(unbiased=False).item())
+    if patch.numel() <= 0:
+        return 0.0
+    p = patch.float()
+    if float(score_shift) != 0.0:
+        p = p + float(score_shift)
+    if float(score_div) != 1.0:
+        p = p.clamp(min=-1000.0, max=1000.0) / float(score_div)
+    else:
+        p = p.clamp(min=-1.0, max=1.0)
+    var = float(p.var(unbiased=False).item())
     return float(1.0 / (1.0 + np.exp(-3.0 * (var - 0.5))))
 
 
@@ -85,8 +123,12 @@ class BETAlgTokenizer(BaseTokenizer):
             return []
 
         token_encoder = None
+        score_shift = 0.0
+        score_div = 1.0
         if self.token_score_fn is not None:
             token_encoder = TokenEncoder(volume=volume, emb_dim=int(emb_dim), seed=int(seed), encoder=None)
+        else:
+            score_shift, score_div = _infer_ct_like_score_norm(volume)
 
         init_level = _level_for_coverage_budget(
             budget_tokens,
@@ -104,7 +146,7 @@ class BETAlgTokenizer(BaseTokenizer):
             if cid in score_cache:
                 return float(score_cache[cid])
             if self.token_score_fn is None:
-                s = float(_heuristic_cell_score(volume, cell))
+                s = float(_heuristic_cell_score(volume, cell, score_shift=float(score_shift), score_div=float(score_div)))
             else:
                 assert token_encoder is not None
                 tok = token_encoder.encode(
@@ -733,8 +775,10 @@ class ROICropTokenizer(BaseTokenizer):
         if not candidates:
             return []
 
+        score_shift, score_div = _infer_ct_like_score_norm(volume)
+
         # Pick ROI cell by cheap heuristic score, tie-break by cell_id (deterministic).
-        scored = [(c, _heuristic_cell_score(volume, c)) for c in candidates]
+        scored = [(c, _heuristic_cell_score(volume, c, score_shift=float(score_shift), score_div=float(score_div))) for c in candidates]
         roi_cell = sorted(scored, key=lambda x: (-x[1], x[0].id()))[0][0]
 
         # Deterministically refine within ROI until reaching budget.
@@ -782,8 +826,10 @@ class ROIVarianceTokenizer(BaseTokenizer):
         n = 2 ** self.candidate_level
         candidates = [Cell(level=self.candidate_level, ix=ix, iy=iy, iz=iz) for ix in range(n) for iy in range(n) for iz in range(n)]
 
+        score_shift, score_div = _infer_ct_like_score_norm(volume)
+
         # Select top-K candidate cells by cheap heuristic score (variance proxy).
-        scored = [(c, _heuristic_cell_score(volume, c)) for c in candidates]
+        scored = [(c, _heuristic_cell_score(volume, c, score_shift=float(score_shift), score_div=float(score_div))) for c in candidates]
         top_cells = [c for (c, _) in sorted(scored, key=lambda x: (-x[1], x[0].id()))[: min(int(budget_tokens), len(scored))]]
 
         # If budget exceeds candidate grid capacity (e.g., 7e6 -> b_enc>512 at level=3),

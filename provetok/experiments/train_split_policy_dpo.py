@@ -1,15 +1,17 @@
 """Train a lightweight split policy via one-step verifier-derived DPO (pp.md §5.2).
 
-This is a scaffold intended for reproducible experimentation:
-- generates preference pairs via one-step lookahead (split → rewrite → verify)
-- trains a pointer-style action scorer with the discrete-action DPO objective
+This script supports:
+- synthetic volumes (default; reproducible without datasets), and
+- manifest-driven real volumes (dataset_type=manifest).
 
-Default data source is synthetic volumes (no dataset completion required).
+It generates preference pairs via one-step lookahead (split → rewrite → verify),
+then trains a pointer-style action scorer with the discrete-action DPO objective.
 """
 
 from __future__ import annotations
 
 import argparse
+import time
 import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -20,10 +22,11 @@ import torch
 
 from ..bet.split_policy_dpo import SplitFeaturizerConfig, SplitPolicyNet, dpo_loss, featurize_split_actions
 from ..bet.tokenize import TokenEncoder
+from ..data import ManifestDataset
 from ..grid.cells import Cell, root_cell, split
 from ..pcg.generator import ToyPCG
 from ..pcg.text_contract import enforce_pp_contract
-from ..types import Generation, Issue, Token
+from ..types import Generation, Issue
 from ..verifier.pp_v1_1 import create_pp_verifier
 from ..eval.metrics_proof import compute_proof_metrics
 from .utils import create_synthetic_volume, save_results_json, set_seed
@@ -33,6 +36,13 @@ from .utils import create_synthetic_volume, save_results_json, set_seed
 class TrainConfig:
     seed: int = 0
     output_dir: str = "./outputs/train_split_policy_dpo"
+
+    # Data source
+    dataset_type: str = "synthetic"  # "synthetic" | "manifest"
+    manifest_path: str = ""
+    split: str = "train"
+    max_samples: int = 0
+    resize_shape: Tuple[int, int, int] = (64, 64, 64)
 
     # Synthetic data
     vol_shape: Tuple[int, int, int] = (64, 64, 64)
@@ -121,19 +131,49 @@ def _init_cells(*, init_level: int, budget_tokens: int, max_depth: int) -> List[
     return [Cell(level=init_level, ix=ix, iy=iy, iz=iz) for ix in range(n) for iy in range(n) for iz in range(n)]
 
 
+def _load_manifest_dataset(cfg: TrainConfig) -> ManifestDataset:
+    if not cfg.manifest_path:
+        raise SystemExit("--manifest is required when --dataset-type=manifest")
+    return ManifestDataset(
+        manifest_path=str(cfg.manifest_path),
+        split=str(cfg.split),
+        max_samples=int(cfg.max_samples),
+        resize_shape=tuple(int(x) for x in cfg.resize_shape),
+        seed=int(cfg.seed),
+    )
+
+
 def _gen_pref_samples(cfg: TrainConfig) -> List[Dict[str, Any]]:
     rng = np.random.RandomState(int(cfg.seed))
+    t_start = time.perf_counter()
     verifier = create_pp_verifier(l_min=int(cfg.l_min))
     pcg = ToyPCG(emb_dim=int(cfg.emb_dim), topk=int(cfg.topk_citations), seed=int(cfg.seed))
 
+    ds: Optional[ManifestDataset] = None
+    if str(cfg.dataset_type) == "manifest":
+        ds = _load_manifest_dataset(cfg)
+        if len(ds) <= 0:
+            raise SystemExit("ManifestDataset is empty (check --manifest/--split/--max-samples).")
+
     samples: List[Dict[str, Any]] = []
     attempts = 0
-    while len(samples) < int(cfg.n_states) and attempts < int(cfg.n_states) * 10:
+    max_attempts = int(cfg.n_states) * 20
+
+    while len(samples) < int(cfg.n_states) and attempts < max_attempts:
         attempts += 1
-        vol_seed = int(cfg.seed) + attempts * 17
-        vol, _ = create_synthetic_volume(shape=tuple(int(x) for x in cfg.vol_shape), n_lesions=int(cfg.n_lesions), seed=int(vol_seed))
+
+        affine_zyx = None
+        if ds is not None:
+            idx = int(rng.randint(0, len(ds)))
+            row = ds[int(idx)]
+            vol = row["volume"]
+            affine_zyx = row.get("affine_zyx", None)
+        else:
+            vol_seed = int(cfg.seed) + attempts * 17
+            vol, _ = create_synthetic_volume(shape=tuple(int(x) for x in cfg.vol_shape), n_lesions=int(cfg.n_lesions), seed=int(vol_seed))
+
         cells = _init_cells(init_level=int(cfg.init_level), budget_tokens=int(cfg.budget_tokens), max_depth=int(cfg.max_depth))
-        enc = TokenEncoder(volume=vol, emb_dim=int(cfg.emb_dim), seed=int(cfg.seed))
+        enc = TokenEncoder(volume=vol, emb_dim=int(cfg.emb_dim), seed=int(cfg.seed), affine_zyx=affine_zyx)
         tokens = enc.encode(cells)
         gen_full = pcg(tokens)
         if not gen_full.frames:
@@ -183,29 +223,51 @@ def _gen_pref_samples(cfg: TrainConfig) -> List[Dict[str, Any]]:
             idxs = rng.choice(len(candidate_cells), size=int(cfg.n_candidates), replace=False).tolist()
             candidate_cells = [candidate_cells[int(i)] for i in sorted(idxs)]
 
+        # Base metric for the picked state (before any split).
+        gen_one_base = enforce_pp_contract(_slice_generation(gen_full, frame_idx=int(picked_idx)), tokens, k_max=int(cfg.k_max_citations))
+        base_m = compute_proof_metrics(gen_one_base, tokens, l_min=int(cfg.l_min))
+        base_w = float(base_m.get("weighted_issue", 0.0))
+
         # Evaluate one-step lookahead for each candidate action.
-        action_scores: List[float] = []
+        action_after_w: List[float] = []
+        action_delta_w: List[float] = []
+        action_n_cites: List[int] = []
+
         for cand in candidate_cells:
             cells2 = [c for c in cells if c.id() != cand.id()] + split(cand)
             if (len(cells2)) > int(cfg.budget_tokens):
-                action_scores.append(float("inf"))
+                action_after_w.append(float("inf"))
+                action_delta_w.append(float("-inf"))
+                action_n_cites.append(0)
                 continue
+
             tokens2 = enc.encode(cells2)
             gen2 = pcg(tokens2)
             gen_one2 = enforce_pp_contract(_slice_generation(gen2, frame_idx=int(picked_idx)), tokens2, k_max=int(cfg.k_max_citations))
-            m = compute_proof_metrics(gen_one2, tokens2, l_min=int(cfg.l_min))
-            action_scores.append(float(m.get("weighted_issue", 0.0)))
+            m2 = compute_proof_metrics(gen_one2, tokens2, l_min=int(cfg.l_min))
+            w2 = float(m2.get("weighted_issue", 0.0))
+            action_after_w.append(w2)
+            action_delta_w.append(float(base_w - w2))
+            n_c = len(list((gen_one2.citations or {}).get(0, []) or []))
+            action_n_cites.append(int(n_c))
 
-        best = int(np.argmin(np.asarray(action_scores, dtype=np.float64)))
-        worst = int(np.argmax(np.asarray(action_scores, dtype=np.float64)))
-        if best == worst:
+        # Choose preferred action: maximize issue reduction; tie-break by lower post-split issue,
+        # then fewer citations.
+        idxs = list(range(len(candidate_cells)))
+        best = min(idxs, key=lambda i: (-action_delta_w[i], action_after_w[i], action_n_cites[i], i))
+        worst = min(idxs, key=lambda i: (action_delta_w[i], -action_after_w[i], -action_n_cites[i], i))
+        if int(best) == int(worst):
             continue
 
+        budget_frac = float(len(cells)) / float(max(1, int(cfg.budget_tokens)))
+        step_frac = 0.0
         feats, ordered = featurize_split_actions(
             cells=candidate_cells,
             tokens=tokens,
             issues=picked_issues,
             cfg=SplitFeaturizerConfig(max_depth=int(cfg.max_depth)),
+            budget_frac=float(budget_frac),
+            step_frac=float(step_frac),
         )
         if not ordered or feats.shape[0] != len(candidate_cells):
             continue
@@ -222,15 +284,38 @@ def _gen_pref_samples(cfg: TrainConfig) -> List[Dict[str, Any]]:
                 "chosen_idx": chosen_idx,
                 "rejected_idx": rejected_idx,
                 "frame_idx": int(picked_idx),
-                "action_scores": [float(x) for x in action_scores],
+                "base_weighted_issue": float(base_w),
+                "action_after_weighted_issue": [float(x) for x in action_after_w],
+                "action_delta_weighted_issue": [float(x) for x in action_delta_w],
+                "action_n_citations": [int(x) for x in action_n_cites],
+                "budget_frac": float(budget_frac),
+                "step_frac": float(step_frac),
             }
         )
+        
+        # Progress logs: preference generation can be slow on real data; emit ETA.
+        if len(samples) <= 5 or len(samples) % 25 == 0 or len(samples) == int(cfg.n_states):
+            elapsed = max(1e-6, float(time.perf_counter() - t_start))
+            rate = float(len(samples)) / elapsed
+            eta_s = float(int(cfg.n_states) - len(samples)) / max(rate, 1e-6)
+            print(
+                f"[prefs] {len(samples)}/{int(cfg.n_states)} attempts={attempts} "
+                f"rate={rate:.3f}/s eta={eta_s/60.0:.1f}m"
+            )
 
     return samples
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Train a split policy via verifier-derived DPO (synthetic scaffold).")
+    ap = argparse.ArgumentParser(description="Train a split policy via verifier-derived DPO (synthetic/manifest).")
+
+    # Data
+    ap.add_argument("--dataset-type", type=str, default="synthetic", choices=["synthetic", "manifest"])
+    ap.add_argument("--manifest", type=str, default="", help="Manifest path when dataset-type=manifest")
+    ap.add_argument("--split", type=str, default="train", choices=["train", "val", "test"], help="Split for manifest dataset")
+    ap.add_argument("--max-samples", type=int, default=0, help="Optional cap for manifest records")
+    ap.add_argument("--resize-shape", type=int, nargs=3, default=[64, 64, 64], help="Resize (D,H,W) for manifest volumes")
+
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--output-dir", type=str, default="./outputs/train_split_policy_dpo")
     ap.add_argument("--device", type=str, default="cpu")
@@ -258,6 +343,11 @@ def main() -> None:
         seed=int(args.seed),
         output_dir=str(args.output_dir),
         device=str(args.device),
+        dataset_type=str(args.dataset_type),
+        manifest_path=str(args.manifest),
+        split=str(args.split),
+        max_samples=int(args.max_samples),
+        resize_shape=tuple(int(x) for x in args.resize_shape),
         n_states=int(args.n_states),
         n_candidates=int(args.n_candidates),
         init_level=int(args.init_level),
@@ -340,4 +430,3 @@ if __name__ == "__main__":
     except Exception:
         pass
     main()
-

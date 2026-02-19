@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from ..types import Frame, Generation, Issue, Token, TokenRef
 
@@ -11,7 +11,7 @@ PP_RULE_SET_VERSION = "pp_v1.1_ruleset_v1"
 TokenSide = Literal["left", "right", "cross", "unknown"]
 
 
-def _infer_volume_width(tokens: List[Token]) -> int:
+def _infer_volume_width_voxel(tokens: List[Token]) -> int:
     xs: List[int] = []
     for t in tokens:
         b = getattr(t, "bounds_voxel", (0, 0, 0, 0, 0, 0))
@@ -23,8 +23,44 @@ def _infer_volume_width(tokens: List[Token]) -> int:
     return int(max(xs)) if xs else 0
 
 
-def _token_side(tok: Token, *, x_mid: float) -> TokenSide:
-    b = getattr(tok, "bounds_voxel", (0, 0, 0, 0, 0, 0))
+def _infer_x_mid(tokens: List[Token]) -> Tuple[float, str, Dict[str, Any]]:
+    """Infer the mid-sagittal plane along the x-axis.
+
+    pp.md assumes a standardized RAS-like coordinate system where the x-axis is
+    left-right, and uses the *center plane* as the laterality split.
+
+    We prefer mm-space when all tokens provide `bounds_mm`; otherwise we fall
+    back to voxel-space midline inferred from token bounds.
+
+    Returns:
+        (x_mid, units, meta)
+        - units: "mm" | "voxel"
+        - meta: diagnostic details (e.g., W_inferred or x_min/x_max)
+    """
+    if tokens and all(getattr(t, "bounds_mm", None) is not None for t in tokens):
+        xs0: List[float] = []
+        xs1: List[float] = []
+        for t in tokens:
+            b = getattr(t, "bounds_mm", None)
+            if not isinstance(b, tuple) or len(b) != 6:
+                continue
+            try:
+                xs0.append(float(b[4]))
+                xs1.append(float(b[5]))
+            except Exception:
+                continue
+        if xs0 and xs1:
+            x_min = float(min(xs0))
+            x_max = float(max(xs1))
+            return 0.5 * (x_min + x_max), "mm", {"x_min": x_min, "x_max": x_max}
+
+    W = _infer_volume_width_voxel(tokens)
+    x_mid = 0.5 * float(W) if W > 0 else 0.0
+    return float(x_mid), "voxel", {"W_inferred": int(W)}
+
+
+def _token_side(tok: Token, *, x_mid: float, x_units: str) -> TokenSide:
+    b = getattr(tok, "bounds_mm" if x_units == "mm" else "bounds_voxel", (0, 0, 0, 0, 0, 0))
     if not isinstance(b, tuple) or len(b) != 6:
         return "unknown"
     try:
@@ -96,7 +132,7 @@ class PPVerifierConfig:
 
 
 class PPVerifierV11:
-    """pp.md v1.1 hard verifier (R1–R4).
+    """pp.md v1.1 hard verifier (R1-R4).
 
     This verifier is intentionally deterministic and auditable:
     - depends only on citations + token geometry + frame slots
@@ -110,8 +146,7 @@ class PPVerifierV11:
         token_by_id = {int(t.token_id): t for t in (tokens or [])}
         token_by_ref = {str(getattr(t, "ref", t.cell_id)): t for t in (tokens or [])}
 
-        W = _infer_volume_width(tokens)
-        x_mid = 0.5 * float(W) if W > 0 else 0.0
+        x_mid, x_units, mid_meta = _infer_x_mid(tokens)
 
         issues: List[Issue] = []
         for frame_idx, frame in enumerate(gen.frames):
@@ -180,7 +215,7 @@ class PPVerifierV11:
 
             lat = str(frame.laterality)
             if lat in ("left", "right"):
-                sides: List[TokenSide] = [_token_side(t, x_mid=x_mid) for t in cited_tokens]
+                sides: List[TokenSide] = [_token_side(t, x_mid=x_mid, x_units=x_units) for t in cited_tokens]
                 want = lat
                 violated: List[str] = []
                 for r, sd in zip(cited_refs, sides):
@@ -196,13 +231,13 @@ class PPVerifierV11:
                             message=f"Laterality mismatch: claim={want}, cited token(s) not exclusively on that side.",
                             cited_refs=list(cited_refs),
                             blame_refs=violated,
-                            rule_inputs={"x_mid": float(x_mid)},
-                            rule_outputs={"sides": [str(x) for x in sides], "W_inferred": int(W)},
+                            rule_inputs={"x_mid": float(x_mid), "x_units": str(x_units), **mid_meta},
+                            rule_outputs={"sides": [str(x) for x in sides]},
                         )
                     )
 
             if lat == "bilateral":
-                sides = [_token_side(t, x_mid=x_mid) for t in cited_tokens]
+                sides = [_token_side(t, x_mid=x_mid, x_units=x_units) for t in cited_tokens]
                 has_left = any(sd == "left" for sd in sides)
                 has_right = any(sd == "right" for sd in sides)
                 if not (has_left and has_right):
@@ -215,12 +250,11 @@ class PPVerifierV11:
                             message="Bilateral claim requires >=1 left-side and >=1 right-side citation.",
                             cited_refs=list(cited_refs),
                             blame_refs=list(cited_refs),
-                            rule_inputs={"x_mid": float(x_mid)},
+                            rule_inputs={"x_mid": float(x_mid), "x_units": str(x_units), **mid_meta},
                             rule_outputs={
                                 "sides": [str(x) for x in sides],
                                 "has_left": bool(has_left),
                                 "has_right": bool(has_right),
-                                "W_inferred": int(W),
                             },
                         )
                     )

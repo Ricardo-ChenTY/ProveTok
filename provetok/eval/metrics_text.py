@@ -19,6 +19,11 @@ try:  # Optional deps (very slow; keep opt-in)
 except Exception:  # noqa: BLE001
     bert_score = None  # type: ignore
 
+try:  # Optional deps (METEOR)
+    from nltk.translate.meteor_score import single_meteor_score  # type: ignore
+except Exception:  # noqa: BLE001
+    single_meteor_score = None  # type: ignore
+
 
 class MissingTextMetricDependency(RuntimeError):
     pass
@@ -49,6 +54,13 @@ class TextMetricConfig:
     compute_bleu: bool = True
     compute_rouge: bool = True
     compute_bertscore: bool = False
+    compute_meteor: bool = False
+
+    # METEOR
+    meteor_alpha: float = 0.9
+    meteor_beta: float = 3.0
+    meteor_gamma: float = 0.5
+
 
     # BLEU
     bleu_tokenize: str = "13a"
@@ -106,6 +118,29 @@ def compute_text_metrics(
             for k in cfg.rouge_types:
                 s = scores.get(k)
                 out[k] = float(getattr(s, "fmeasure", 0.0)) if s is not None else 0.0
+
+
+    if cfg.compute_meteor:
+        _require(single_meteor_score, "nltk")
+        if not ref_n and not pred_n:
+            out["meteor"] = 1.0
+        elif not ref_n or not pred_n:
+            out["meteor"] = 0.0
+        else:
+            try:
+                out["meteor"] = float(
+                    single_meteor_score(
+                        ref_n.split(),
+                        pred_n.split(),
+                        alpha=float(getattr(cfg, "meteor_alpha", 0.9)),
+                        beta=float(getattr(cfg, "meteor_beta", 3.0)),
+                        gamma=float(getattr(cfg, "meteor_gamma", 0.5)),
+                    )
+                )
+            except LookupError as e:
+                raise MissingTextMetricDependency(
+                    "METEOR requires NLTK data (wordnet). Run: `python -m nltk.downloader wordnet`."
+                ) from e
 
     return out
 

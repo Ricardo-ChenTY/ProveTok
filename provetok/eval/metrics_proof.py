@@ -76,6 +76,7 @@ def attach_posthoc_citations(
         citations_ref=citations_ref,
         text=str(getattr(gen, "text", "") or ""),
         impression=str(getattr(gen, "impression", "") or ""),
+        report_text=str(getattr(gen, "report_text", "") or ""),
     )
 
 

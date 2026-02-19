@@ -318,7 +318,7 @@ Built on CT-RATE, RadGenome provides:
 
 **CT-RATE (secondary).**
 CT-RATE pairs 3D chest CT volumes with reports and multi-abnormality labels; the foundation model paper describes CT-RATE as 25,692 scans from 21,304 patients (expanded reconstructions).([arXiv][9])
-For comparability with prior 3D report-generation literature, we follow the split described in RRG-DPO: official training set (24,128 volumes/20,000 patients) and a test set split into validation (360/300) and testing (1204/1004).([MICCAI Papers][3])
+For comparability with prior 3D report-generation literature, we adopt the preprocessing described in RRG-DPO (§6.2) and report development results on a fixed held-out patient-level test split (the default in this repo). **SOTA** claims on CT-RATE are only made when additionally reporting on the official RRG-DPO split: training (24,128 volumes / 20,000 patients) and test split into validation (360/300) and testing (1204/1004).([MICCAI Papers][3])
 
 **CTRG-Chest-548K subset (appendix).**
 We include the commonly reproduced 1,804-pair setting described in Dia-LLaMA (80/20 split).([MICCAI Papers][4])
@@ -342,6 +342,10 @@ We include representative 3D CT report generators and 3D VLM variants:
 
 > 注意：这些 baseline 大多不输出 citations。因此我们在 proof 指标上给它们一个 **post-hoc citation wrapper**（下节），以保证公平。
 
+**Reproducible evaluation protocol (what we actually run).**
+We do not need to integrate each baseline’s training/inference code. Instead, each external baseline provides a unified `pred_jsonl`:
+`{sample_id=<scan_hash>, method, pred_text}`. We join it with references from a manifest to build `pairs_all.jsonl`, then compute Table1 metrics + paired statistics via a single driver (`scripts/paper/run_table1_ct_rate.py` → `scripts/paper/compute_paper_metrics.py`). Optional metrics (GREEN/RadCliQ/CheXbert) are exported as `extra_metrics_jsonl` via RadEval (Py3.11) and merged post-hoc; optional proof metrics for non-proof baselines are computed with the post-hoc citation wrapper (audit-only; does not change text). For any “SOTA” claim, we require **100% coverage** of the target test split for every compared method.
+
 #### Our system variants (核心消融)
 
 * **NoProof**: standard report generation without citations (upper bound on hallucination risk).
@@ -360,6 +364,8 @@ We include representative 3D CT report generators and 3D VLM variants:
 * **Clinical correlation**: RadCliQ.([Cell][11])
 * **LLM-based**: GREEN.([ACL Anthology][6])
 * **Additional**: RaTEScore.([ACL Anthology][12])
+
+Implementation note: we export heavy/LLM-based metrics (GREEN/RadCliQ/CheXbert) as per-sample `extra_metrics_jsonl` in an isolated environment (RadEval, Py3.11) and merge them into the same Table1 computation, to pin versions and avoid hidden dependency drift.
 
 #### Proof-centric reliability metrics (核心主指标)
 

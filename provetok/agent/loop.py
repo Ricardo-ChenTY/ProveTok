@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import torch
 
@@ -162,6 +162,7 @@ def run_provetok_agent(
     cfg: AgentConfig = AgentConfig(),
     seed: int = 0,
     encoder=None,
+    affine_zyx: Optional[Any] = None,
     split_cell_fn: Optional[Callable[[List[Cell], List[Token], List[Issue]], Optional[Cell]]] = None,
 ) -> AgentResult:
     """Run pp.md-style ProveTok-Agent write→verify→split→rewrite loop (v1.1 scope).
@@ -198,7 +199,7 @@ def run_provetok_agent(
         n = 2 ** int(init_level)
         cells = [Cell(level=init_level, ix=ix, iy=iy, iz=iz) for ix in range(n) for iy in range(n) for iz in range(n)]
 
-    token_encoder = TokenEncoder(volume=volume, emb_dim=int(cfg.emb_dim), seed=int(seed), encoder=encoder)
+    token_encoder = TokenEncoder(volume=volume, emb_dim=int(cfg.emb_dim), seed=int(seed), encoder=encoder, affine_zyx=affine_zyx)
     trace: List[AgentStepTrace] = []
 
     # Split history for keeping earlier citations valid after later splits.
@@ -216,6 +217,7 @@ def run_provetok_agent(
 
     for finding_idx in range(K):
         stopped_reason = "max_steps"
+        done_finding = False
         for it in range(max_steps_per_finding):
             tokens = token_encoder.encode(cells)
             leaf_ids = {int(t.token_id) for t in tokens}
@@ -260,6 +262,7 @@ def run_provetok_agent(
                     )
                 )
                 stopped_reason = "verified_clean"
+                done_finding = True
                 break
 
             # Determine whether we can split a blamed token.
@@ -270,7 +273,20 @@ def run_provetok_agent(
             c_star: Optional[Cell] = None
             if blame_refs and splittable_cells and can_afford_split:
                 if split_cell_fn is not None:
-                    c_star = split_cell_fn(list(splittable_cells), list(tokens), list(issues))
+                    budget_frac = float(len(cells)) / float(max(1, budget_tokens))
+                    step_frac = float(it) / float(max(1, max_steps_per_finding))
+                    try:
+                        c_star = split_cell_fn(
+                            list(splittable_cells),
+                            list(tokens),
+                            list(issues),
+                            budget_frac=float(budget_frac),
+                            step_frac=float(step_frac),
+                            finding_idx=int(finding_idx),
+                            iter_idx=int(it),
+                        )
+                    except TypeError:
+                        c_star = split_cell_fn(list(splittable_cells), list(tokens), list(issues))
                 else:
                     c_star = pick_cell_to_split(splittable_cells, tokens, list(issues))
 
@@ -307,6 +323,7 @@ def run_provetok_agent(
                     )
                 )
                 stopped_reason = "despecified"
+                done_finding = True
                 break
 
             # Split action.
@@ -341,15 +358,42 @@ def run_provetok_agent(
             )
             stopped_reason = "split"
 
-        # If the loop didn't accept (max steps), fall back to despecify.
-        if stopped_reason == "max_steps":
+        # If we exhausted the step budget without accepting/despecifying (e.g., kept splitting),
+        # fall back to a conservative de-specification to ensure we always emit exactly one frame
+        # per slot and keep frame<->citation indices aligned.
+        if not done_finding:
             tokens = token_encoder.encode(cells)
+            leaf_ids = {int(t.token_id) for t in tokens}
             gen_full = generator_fn(tokens)
-            gen_one = enforce_pp_contract(_slice_generation(gen_full, frame_idx=int(finding_idx)), tokens, k_max=int(cfg.k_max_citations))
+            gen_one = _slice_generation(gen_full, frame_idx=int(finding_idx))
+            gen_one = enforce_pp_contract(gen_one, tokens, k_max=int(cfg.k_max_citations))
+
+            issues = verifier.verify(gen_one, tokens)
+            if bool(cfg.use_posthoc_citations_for_r1):
+                has_r1 = any(str(getattr(iss, "rule_id", "")) == "R1" for iss in issues)
+                if has_r1:
+                    gen_one = attach_posthoc_citations(
+                        gen_one,
+                        tokens,
+                        k_max=int(cfg.k_max_citations),
+                        positive_only=True,
+                        overwrite_empty_only=True,
+                    )
+                    gen_one = enforce_pp_contract(gen_one, tokens, k_max=int(cfg.k_max_citations))
+                    issues = verifier.verify(gen_one, tokens)
+
             fr0 = gen_one.frames[0] if gen_one.frames else Frame(finding="normal", polarity="absent", laterality="unspecified", confidence=0.5)
             fr1 = _despecify_frame(fr0) if bool(cfg.despecify_on_fail) else fr0
+            cites = [] if bool(cfg.despecify_clear_citations) else list((gen_one.citations or {}).get(0, []) or [])
+            cites = _expand_ids_to_current_leaves(
+                cites,
+                leaf_ids=leaf_ids,
+                split_children=split_children,
+                k_max=int(cfg.k_max_citations),
+            )
+
             accepted_frames.append(fr1)
-            accepted_citations[finding_idx] = []
+            accepted_citations[finding_idx] = list(cites)
             accepted_q[finding_idx] = float((gen_one.q or {}).get(0, getattr(fr1, "confidence", 0.5)))
             accepted_refusal[finding_idx] = bool((gen_one.refusal or {}).get(0, False))
             trace.append(
@@ -359,7 +403,7 @@ def run_provetok_agent(
                     num_tokens=int(len(tokens)),
                     num_cells=int(len(cells)),
                     action="despecify",
-                    issues=[],
+                    issues=[_issue_dict(x) for x in issues],
                     stopped_reason="max_steps_despecify",
                 )
             )

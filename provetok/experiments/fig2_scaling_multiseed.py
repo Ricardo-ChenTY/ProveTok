@@ -65,6 +65,8 @@ def main() -> None:
     ap.add_argument("--llama2-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full"])
     ap.add_argument("--llama2-citation-source", type=str, default="score_override", choices=["score_override", "llm"])
     ap.add_argument("--llama2-max-frames", type=int, default=1)
+    ap.add_argument("--llama2-lora-adapter", type=str, default="", help="Optional LoRA/PEFT adapter path")
+    ap.add_argument("--llama2-lora-merge", action="store_true", help="Merge LoRA adapter into base model (if supported)")
     ap.add_argument("--pcg-refresh-period", type=int, default=1)
     ap.add_argument("--encoder", type=str, default="toy", choices=["toy", "cnn3d"])
     ap.add_argument("--encoder-device", type=str, default="cuda")
@@ -112,6 +114,8 @@ def main() -> None:
                 contract_mode=str(args.llama2_contract_mode),
                 citation_source=str(args.llama2_citation_source),
                 max_frames=int(args.llama2_max_frames),
+                lora_adapter_path=str(args.llama2_lora_adapter),
+                lora_merge=bool(args.llama2_lora_merge),
             )
         )
 
@@ -138,6 +142,8 @@ def main() -> None:
             llama2_contract_mode=str(args.llama2_contract_mode),
             llama2_citation_source=str(args.llama2_citation_source),
             llama2_max_frames=int(args.llama2_max_frames),
+            llama2_lora_adapter=str(args.llama2_lora_adapter),
+            llama2_lora_merge=bool(args.llama2_lora_merge),
             pcg_refresh_period=int(args.pcg_refresh_period),
             encoder_backend=str(args.encoder),
             encoder_device=str(args.encoder_device),

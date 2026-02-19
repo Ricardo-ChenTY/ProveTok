@@ -40,11 +40,12 @@ from ..eval.compute_budget import match_b_enc_for_total_flops
 from ..eval.metrics_frames import compute_frame_f1
 from ..eval.metrics_grounding import compute_generation_grounding
 from ..eval.metrics_proof import ProofWeights, attach_posthoc_citations, compute_proof_metrics
-from ..eval.metrics_text import MissingTextMetricDependency, compute_text_metrics
+from ..eval.metrics_text import MissingTextMetricDependency, TextMetricConfig, compute_text_metrics
 from ..eval.stats import bootstrap_mean_ci
 from ..pcg.generator import ToyPCG
 from ..pcg.llama2_pcg import Llama2PCG, Llama2PCGConfig
 from ..pcg.refusal import RefusalPolicy
+from ..pcg.narrative import render_generation_text
 from ..pcg.schema_version import SCHEMA_VERSION
 from ..models.lesionness_head import load_lesionness_head
 from ..models.ct2rep_strong import load_ct2rep_strong
@@ -85,6 +86,8 @@ class BaselineRunConfig:
     llama2_contract_mode: str = "full"  # "free_form" | "schema_only" | "schema_citations" | "full"
     llama2_citation_source: str = "score_override"  # "score_override" | "llm"
     llama2_max_frames: int = 1
+    llama2_lora_adapter: str = ""  # optional LoRA/PEFT adapter path (pp.md §6.6)
+    llama2_lora_merge: bool = False   # optionally merge adapter weights for inference
     methods: List[str] = field(default_factory=list)  # Optional subset of tokenizers to run.
     nlg_weight: float = 0.5
     grounding_weight: float = 0.5
@@ -98,6 +101,11 @@ class BaselineRunConfig:
     ct2rep_strong_weights: str = ""
     ct2rep_strong_device: str = "cpu"
     compute_text_metrics: bool = True
+    dump_text_pairs_jsonl: str = ""  # optional jsonl dump of (method,pred,ref) for external metrics
+    chexbert_model: str = ""  # optional CheXbert-style labeler model path/id
+    chexbert_device: str = "cpu"
+    chexbert_output_mode: str = "auto"  # auto|sigmoid|chexbert4
+    chexbert_uncertain_positive: bool = False
     compute_proof_metrics: bool = True
     proof_l_min: int = 2
     proof_k_max: int = 8
@@ -108,7 +116,7 @@ class BaselineRunConfig:
     proof_w4_r4: float = 2.0
 
 
-_LLAMA2_PCG_CACHE: Dict[Tuple[str, str, int, int, str, str, int], Llama2PCG] = {}
+_LLAMA2_PCG_CACHE: Dict[Tuple[object, ...], Llama2PCG] = {}
 
 
 def _grounding_union(gen: Generation, tokens, lesion_masks, volume_shape) -> Dict[str, float]:
@@ -282,11 +290,42 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
     text_metrics_enabled = bool(cfg.compute_text_metrics)
     if text_metrics_enabled:
         try:
-            _ = compute_text_metrics("a", "a")
+            _ = compute_text_metrics("a", "a", cfg=TextMetricConfig(compute_meteor=True))
         except MissingTextMetricDependency:
             text_metrics_enabled = False
 
     pcg_llm = None
+    chexbert_labeler = None
+    if str(getattr(cfg, "chexbert_model", "") or "").strip():
+        try:
+            from ..eval.metrics_chexbert import (
+                CheXbertConfig,
+                CheXbertLabeler,
+                MissingCheXbertDependency,
+                compute_chexbert_prf,
+            )
+            chexbert_labeler = CheXbertLabeler(
+                CheXbertConfig(
+                    model_path=str(cfg.chexbert_model),
+                    device=str(cfg.chexbert_device),
+                    output_mode=str(cfg.chexbert_output_mode),
+                    treat_uncertain_as_positive=bool(cfg.chexbert_uncertain_positive),
+                )
+            )
+        except MissingCheXbertDependency:
+            chexbert_labeler = None
+        except Exception:
+            chexbert_labeler = None
+
+    dump_f = None
+    dump_path = None
+    if str(getattr(cfg, "dump_text_pairs_jsonl", "") or "").strip():
+        dump_path = Path(str(cfg.dump_text_pairs_jsonl))
+        if not dump_path.is_absolute():
+            dump_path = Path(str(cfg.output_dir)) / dump_path
+        dump_path.parent.mkdir(parents=True, exist_ok=True)
+        dump_f = dump_path.open("w", encoding="utf-8")
+
     if cfg.pcg_backend == "llama2":
         # Cache LLM instances when running multi-budget sweeps in a single process.
         # This is required for practicality (loading the model repeatedly is prohibitive).
@@ -299,6 +338,8 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             str(cfg.llama2_contract_mode),
             str(cfg.llama2_citation_source),
             int(cfg.llama2_max_frames),
+            str(cfg.llama2_lora_adapter),
+            bool(cfg.llama2_lora_merge),
         )
         pcg_llm = _LLAMA2_PCG_CACHE.get(key)
         if pcg_llm is None:
@@ -314,6 +355,8 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
                     contract_mode=str(cfg.llama2_contract_mode),
                     citation_source=str(cfg.llama2_citation_source),
                     max_frames=int(cfg.llama2_max_frames),
+                    lora_adapter_path=str(cfg.llama2_lora_adapter),
+                    lora_merge=bool(cfg.llama2_lora_merge),
                 )
             )
             _LLAMA2_PCG_CACHE[key] = pcg_llm
@@ -443,8 +486,11 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
                     "rouge1": [],
                     "rouge2": [],
                     "rougeL": [],
+                    "meteor": [],
                 }
             )
+        if chexbert_labeler is not None:
+            results[name].update({"chexbert_precision": [], "chexbert_recall": [], "chexbert_f1": []})
 
     def extra_flops_for(tok) -> float:
         # ROI-like baselines may require a selector/detector to pick candidate regions.
@@ -570,7 +616,27 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
             if name == "ct2rep_noproof":
                 gen_eval = apply_no_citation(gen_eval)
                 # Disable refusal for non-proof baseline.
-                gen_eval = Generation(frames=gen_eval.frames, citations=gen_eval.citations, q=gen_eval.q, refusal={k: False for k in range(len(gen_eval.frames))}, text=gen_eval.text)
+                refusal = {int(k): False for k in range(len(gen_eval.frames))}
+                tmp = Generation(
+                    frames=gen_eval.frames,
+                    citations=gen_eval.citations,
+                    q=gen_eval.q,
+                    refusal=refusal,
+                    citations_ref=getattr(gen_eval, 'citations_ref', None),
+                    text="",
+                    impression=str(getattr(gen_eval, 'impression', '') or ''),
+                    report_text=str(getattr(gen_eval, 'report_text', '') or ''),
+                )
+                gen_eval = Generation(
+                    frames=tmp.frames,
+                    citations=tmp.citations,
+                    q=tmp.q,
+                    refusal=tmp.refusal,
+                    citations_ref=getattr(tmp, 'citations_ref', None),
+                    text=render_generation_text(tmp),
+                    impression=str(getattr(tmp, 'impression', '') or ''),
+                    report_text=str(getattr(tmp, 'report_text', '') or ''),
+                )
 
             if refusal_policy is not None:
                 gen_eval = refusal_policy.apply(gen_eval)
@@ -700,13 +766,21 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
                 # For contract_mode=free_form, preserve the raw LLM text channel.
                 # For schema-based modes, Generation.text is a machine-parseable narrative,
                 # so we compute text metrics on a naturalized report derived from frames.
-                pred_text = ""
-                if cfg.pcg_backend == "llama2" and str(cfg.llama2_contract_mode) == "free_form":
-                    pred_text = str(getattr(gen_eval, "text", "") or "").strip()
+                pred_text = str(getattr(gen_eval, "report_text", "") or "").strip()
                 if not pred_text:
                     pred_text = frames_to_report(gen_eval.frames)
+                if dump_f is not None:
+                    sid = ""
+                    if cfg.dataset_type == "manifest":
+                        try:
+                            sid = str((batch.get("sample_id") or [""])[0])
+                        except Exception:
+                            sid = ""
+                    if not sid:
+                        sid = f"synthetic_{int(i)}"
+                    dump_f.write(json.dumps({"sample_id": sid, "method": name, "pred_text": pred_text, "ref_text": gt_report_raw}, ensure_ascii=False) + "\n")
                 try:
-                    m = compute_text_metrics(pred_text, gt_report_raw)
+                    m = compute_text_metrics(pred_text, gt_report_raw, cfg=TextMetricConfig(compute_meteor=True))
                 except MissingTextMetricDependency:
                     # Should not happen because we probe once above, but keep robust.
                     text_metrics_enabled = False
@@ -715,6 +789,15 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
                 results[name]["rouge1"].append(float(m.get("rouge1", 0.0)))
                 results[name]["rouge2"].append(float(m.get("rouge2", 0.0)))
                 results[name]["rougeL"].append(float(m.get("rougeL", 0.0)))
+                results[name]["meteor"].append(float(m.get("meteor", 0.0)))
+            if chexbert_labeler is not None:
+                try:
+                    cm = compute_chexbert_prf(pred_text, gt_report_raw, labeler=chexbert_labeler)
+                except Exception:
+                    cm = {}
+                results[name]["chexbert_precision"].append(float(cm.get("chexbert_precision", 0.0)))
+                results[name]["chexbert_recall"].append(float(cm.get("chexbert_recall", 0.0)))
+                results[name]["chexbert_f1"].append(float(cm.get("chexbert_f1", 0.0)))
 
             # Record per-baseline budget info once (deterministic given cfg + tokenizer type).
             if name not in budgets:
@@ -747,6 +830,12 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
     else:
         budget_target = format_budget_report(b_enc=cfg.budget_tokens, b_gen=cfg.b_gen, n_verify=cfg.n_verify, costs=costs, flops_extra=0.0)
 
+    if dump_f is not None:
+        try:
+            dump_f.close()
+        except Exception:
+            pass
+
     return {
         "meta": meta.to_dict(),
         "config": asdict(cfg),
@@ -770,9 +859,16 @@ def main() -> None:
     ap.add_argument("--llama2-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full"])
     ap.add_argument("--llama2-citation-source", type=str, default="score_override", choices=["score_override", "llm"])
     ap.add_argument("--llama2-max-frames", type=int, default=1)
+    ap.add_argument("--llama2-lora-adapter", type=str, default="", help="Optional LoRA/PEFT adapter path")
+    ap.add_argument("--llama2-lora-merge", action="store_true", help="Merge LoRA adapter into base model (if supported)")
     ap.add_argument("--methods", type=str, nargs="+", default=[], help="Optional subset of tokenizers to run (e.g., provetok_lesionness fixed_grid).")
     ap.add_argument("--smoke", action="store_true", help="Quick run")
     ap.add_argument("--n-samples", type=int, default=30)
+    ap.add_argument("--dump-text-pairs-jsonl", type=str, default="", help="Write per-sample (method,pred_text,ref_text) jsonl for external paper metrics")
+    ap.add_argument("--chexbert-model", type=str, default="", help="Optional CheXbert-style labeler model path/id")
+    ap.add_argument("--chexbert-device", type=str, default="cpu")
+    ap.add_argument("--chexbert-output-mode", type=str, default="auto", choices=["auto", "sigmoid", "chexbert4"])
+    ap.add_argument("--chexbert-uncertain-positive", action="store_true", help="Treat uncertain as positive in chexbert4 mode")
     ap.add_argument("--topk-citations", type=int, default=3, help="Number of citations per finding frame.")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--seeds", type=int, nargs="+", default=None, help="Optional list of seeds for multi-seed runs.")
@@ -856,6 +952,8 @@ def main() -> None:
             llama2_contract_mode=str(args.llama2_contract_mode),
             llama2_citation_source=str(args.llama2_citation_source),
             llama2_max_frames=int(args.llama2_max_frames),
+                llama2_lora_adapter=str(args.llama2_lora_adapter),
+                llama2_lora_merge=bool(args.llama2_lora_merge),
             methods=list(args.methods) if args.methods else [],
             nlg_weight=float(args.nlg_weight),
             grounding_weight=float(args.grounding_weight),
@@ -870,6 +968,11 @@ def main() -> None:
             ct2rep_strong_weights=str(args.ct2rep_strong_weights),
             ct2rep_strong_device=str(args.ct2rep_strong_device),
             compute_text_metrics=(not bool(args.no_text_metrics)),
+            dump_text_pairs_jsonl=str(args.dump_text_pairs_jsonl),
+            chexbert_model=str(args.chexbert_model),
+            chexbert_device=str(args.chexbert_device),
+            chexbert_output_mode=str(args.chexbert_output_mode),
+            chexbert_uncertain_positive=bool(args.chexbert_uncertain_positive),
             compute_proof_metrics=(not bool(args.no_proof_metrics)),
             proof_l_min=int(args.proof_l_min),
             proof_k_max=int(args.proof_k_max),
@@ -902,10 +1005,17 @@ def main() -> None:
                 llama2_contract_mode=str(args.llama2_contract_mode),
                 llama2_citation_source=str(args.llama2_citation_source),
                 llama2_max_frames=int(args.llama2_max_frames),
+                llama2_lora_adapter=str(args.llama2_lora_adapter),
+                llama2_lora_merge=bool(args.llama2_lora_merge),
                 methods=list(args.methods) if args.methods else [],
                 nlg_weight=float(args.nlg_weight),
                 grounding_weight=float(args.grounding_weight),
                 compute_text_metrics=(not bool(args.no_text_metrics)),
+                dump_text_pairs_jsonl=str(args.dump_text_pairs_jsonl),
+                chexbert_model=str(args.chexbert_model),
+                chexbert_device=str(args.chexbert_device),
+                chexbert_output_mode=str(args.chexbert_output_mode),
+                chexbert_uncertain_positive=bool(args.chexbert_uncertain_positive),
                 lesionness_weights=str(args.lesionness_weights),
                 lesionness_device=str(args.lesionness_device),
                 lesionness_score_level_power=float(args.lesionness_score_level_power),
