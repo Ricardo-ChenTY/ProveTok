@@ -4,7 +4,7 @@ Runs a small set of tokenization/protocol baselines on synthetic data and report
 - Frame F1 (vs a fixed synthetic report-derived GT)
 - Grounding IoU (union) vs synthetic lesion masks
 - Verifier issue rates (unsupported/overclaim/etc.)
-- Estimated FLOPs (toy) via ComputeUnitCosts
+- Estimated FLOPs (unit-cost approximation) via ComputeUnitCosts
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ from ..eval.metrics_proof import ProofWeights, attach_posthoc_citations, compute
 from ..eval.metrics_text import MissingTextMetricDependency, TextMetricConfig, compute_text_metrics
 from ..eval.stats import bootstrap_mean_ci
 from ..pcg.generator import ToyPCG
-from ..pcg.llama2_pcg import Llama2PCG, Llama2PCGConfig
+from ..eag.llama3_eag import Llama3EAG, Llama3EAGConfig
 from ..pcg.refusal import RefusalPolicy
 from ..pcg.narrative import render_generation_text
 from ..pcg.schema_version import SCHEMA_VERSION
@@ -80,14 +80,14 @@ class BaselineRunConfig:
     costs_json: str = ""
     selector_ratio: float = 0.1
     resize_shape: Tuple[int, int, int] = (64, 64, 64)
-    pcg_backend: str = "toy"  # "toy" | "llama2" | "llama3"
-    llama2_path: str = "/data/models/Meta-Llama-3.1-8B-Instruct"
-    llama2_quant: str = "fp16"  # "fp16" or "8bit"
-    llama2_contract_mode: str = "full"  # "free_form" | "schema_only" | "schema_citations" | "full" | "inline_citation"
-    llama2_citation_source: str = "score_override"  # "score_override" | "llm"
-    llama2_max_frames: int = 1
-    llama2_lora_adapter: str = ""  # optional LoRA/PEFT adapter path (pp.md §6.6)
-    llama2_lora_merge: bool = False   # optionally merge adapter weights for inference
+    pcg_backend: str = "llama3"  # llama3 only
+    llama3_path: str = "~/models/llama3"
+    llama3_quant: str = "fp16"  # "fp16" or "8bit"
+    llama3_contract_mode: str = "full"  # "free_form" | "schema_only" | "schema_citations" | "full" | "inline_citation"
+    llama3_citation_source: str = "score_override"  # "score_override" | "llm"
+    llama3_max_frames: int = 1
+    llama3_lora_adapter: str = ""  # optional LoRA/PEFT adapter path (pp.md §6.6)
+    llama3_lora_merge: bool = False   # optionally merge adapter weights for inference
     methods: List[str] = field(default_factory=list)  # Optional subset of tokenizers to run.
     nlg_weight: float = 0.5
     grounding_weight: float = 0.5
@@ -116,7 +116,7 @@ class BaselineRunConfig:
     proof_w4_r4: float = 2.0
 
 
-_LLAMA2_PCG_CACHE: Dict[Tuple[object, ...], Llama2PCG] = {}
+_llama3_PCG_CACHE: Dict[Tuple[object, ...], Llama3EAG] = {}
 
 
 def _grounding_union(gen: Generation, tokens, lesion_masks, volume_shape) -> Dict[str, float]:
@@ -330,40 +330,40 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
         dump_path.parent.mkdir(parents=True, exist_ok=True)
         dump_f = dump_path.open("w", encoding="utf-8")
 
-    if cfg.pcg_backend in ("llama2", "llama3"):
+    if cfg.pcg_backend == "llama3":
         # Cache LLM instances when running multi-budget sweeps in a single process.
         # This is required for practicality (loading the model repeatedly is prohibitive).
         max_new_tokens = max(128, int(cfg.b_gen))
         key = (
-            str(cfg.llama2_path),
-            str(cfg.llama2_quant),
+            str(cfg.llama3_path),
+            str(cfg.llama3_quant),
             int(max_new_tokens),
             int(cfg.topk_citations),
-            str(cfg.llama2_contract_mode),
-            str(cfg.llama2_citation_source),
-            int(cfg.llama2_max_frames),
-            str(cfg.llama2_lora_adapter),
-            bool(cfg.llama2_lora_merge),
+            str(cfg.llama3_contract_mode),
+            str(cfg.llama3_citation_source),
+            int(cfg.llama3_max_frames),
+            str(cfg.llama3_lora_adapter),
+            bool(cfg.llama3_lora_merge),
         )
-        pcg_llm = _LLAMA2_PCG_CACHE.get(key)
+        pcg_llm = _llama3_PCG_CACHE.get(key)
         if pcg_llm is None:
-            pcg_llm = Llama2PCG(
-                Llama2PCGConfig(
-                    model_path=cfg.llama2_path,
+            pcg_llm = Llama3EAG(
+                Llama3EAGConfig(
+                    model_path=cfg.llama3_path,
                     device="cuda",
-                    quantization=cfg.llama2_quant,
+                    quantization=cfg.llama3_quant,
                     # Keep output cap aligned with compute accounting (b_gen).
                     max_new_tokens=int(max_new_tokens),
                     temperature=0.0,
                     topk_citations=int(cfg.topk_citations),
-                    contract_mode=str(cfg.llama2_contract_mode),
-                    citation_source=str(cfg.llama2_citation_source),
-                    max_frames=int(cfg.llama2_max_frames),
-                    lora_adapter_path=str(cfg.llama2_lora_adapter),
-                    lora_merge=bool(cfg.llama2_lora_merge),
+                    contract_mode=str(cfg.llama3_contract_mode),
+                    citation_source=str(cfg.llama3_citation_source),
+                    max_frames=int(cfg.llama3_max_frames),
+                    lora_adapter_path=str(cfg.llama3_lora_adapter),
+                    lora_merge=bool(cfg.llama3_lora_merge),
                 )
             )
-            _LLAMA2_PCG_CACHE[key] = pcg_llm
+            _llama3_PCG_CACHE[key] = pcg_llm
 
     token_score_fn = None
     if cfg.lesionness_weights:
@@ -852,20 +852,19 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Run baseline tokenization/protocol comparisons (synthetic scaffold)")
+    ap = argparse.ArgumentParser(description="Run baseline tokenization/protocol comparisons (local scaffold)")
     ap.add_argument("--dataset-type", type=str, default="synthetic", choices=["synthetic", "manifest"])
     ap.add_argument("--manifest", type=str, default="", help="Manifest path when dataset-type=manifest")
     ap.add_argument("--split", type=str, default="test", choices=["train", "val", "test"])
     ap.add_argument("--resize-shape", type=int, nargs=3, default=[64, 64, 64], help="Resize (D,H,W) for manifest volumes")
-    ap.add_argument("--pcg", type=str, default="toy", choices=["toy", "llama2", "llama3"], help="PCG backend")
-    ap.add_argument("--llama2-path", type=str, default="/data/models/Meta-Llama-3.1-8B-Instruct", help="Path to HF causal LM (Llama-2/Llama-3, etc.)")
-    ap.add_argument("--llm-path", type=str, default="", help="Alias of --llama2-path (preferred for non-Llama2 models).")
-    ap.add_argument("--llama2-quant", type=str, default="fp16", choices=["fp16", "8bit"])
-    ap.add_argument("--llama2-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full", "inline_citation"])
-    ap.add_argument("--llama2-citation-source", type=str, default="score_override", choices=["score_override", "llm"])
-    ap.add_argument("--llama2-max-frames", type=int, default=1)
-    ap.add_argument("--llama2-lora-adapter", type=str, default="", help="Optional LoRA/PEFT adapter path")
-    ap.add_argument("--llama2-lora-merge", action="store_true", help="Merge LoRA adapter into base model (if supported)")
+    ap.add_argument("--pcg", type=str, default="llama3", choices=["llama3"], help="EAG backend")
+    ap.add_argument("--llama3-path", type=str, default="~/models/llama3", help="Path to HF causal LM (meta-llama/Llama-3.1-8B-Instruct).")
+    ap.add_argument("--llama3-quant", type=str, default="fp16", choices=["fp16", "8bit"])
+    ap.add_argument("--llama3-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full", "inline_citation"])
+    ap.add_argument("--llama3-citation-source", type=str, default="score_override", choices=["score_override", "llm"])
+    ap.add_argument("--llama3-max-frames", type=int, default=1)
+    ap.add_argument("--llama3-lora-adapter", type=str, default="", help="Optional LoRA/PEFT adapter path")
+    ap.add_argument("--llama3-lora-merge", action="store_true", help="Merge LoRA adapter into base model (if supported)")
     ap.add_argument("--methods", type=str, nargs="+", default=[], help="Optional subset of tokenizers to run (e.g., provetok_lesionness fixed_grid).")
     ap.add_argument("--smoke", action="store_true", help="Quick run")
     ap.add_argument("--n-samples", type=int, default=30)
@@ -881,9 +880,9 @@ def main() -> None:
     ap.add_argument("--ci", type=float, default=0.95, help="CI level for bootstrap when --seeds is used.")
     ap.add_argument("--output-dir", type=str, default="./outputs/baselines")
     ap.add_argument("--refusal-policy", type=str, default="", help="Path to refusal_policy.json (optional)")
-    ap.add_argument("--flops-total", type=float, default=0.0, help="Optional FLOPs-matched total budget (toy unit-cost model).")
-    ap.add_argument("--b-gen", type=int, default=128, help="Decoder token budget for matched accounting (toy).")
-    ap.add_argument("--n-verify", type=int, default=1, help="Verifier call count for matched accounting (toy).")
+    ap.add_argument("--flops-total", type=float, default=0.0, help="Optional FLOPs-matched total budget (unit-cost model).")
+    ap.add_argument("--b-gen", type=int, default=128, help="Decoder token budget for matched accounting.")
+    ap.add_argument("--n-verify", type=int, default=1, help="Verifier call count for matched accounting.")
     ap.add_argument("--costs-json", type=str, default="", help="Optional JSON with ComputeUnitCosts.")
     ap.add_argument("--selector-ratio", type=float, default=0.1, help="ROI selector cost as a fraction of enc-token FLOPs.")
     ap.add_argument("--nlg-weight", type=float, default=0.5, help="Weight for frame_f1 in combined metric.")
@@ -952,13 +951,13 @@ def main() -> None:
             selector_ratio=float(args.selector_ratio),
             resize_shape=tuple(args.resize_shape),
             pcg_backend=args.pcg,
-            llama2_path=(str(args.llm_path) if str(args.llm_path).strip() else args.llama2_path),
-            llama2_quant=args.llama2_quant,
-            llama2_contract_mode=str(args.llama2_contract_mode),
-            llama2_citation_source=str(args.llama2_citation_source),
-            llama2_max_frames=int(args.llama2_max_frames),
-                llama2_lora_adapter=str(args.llama2_lora_adapter),
-                llama2_lora_merge=bool(args.llama2_lora_merge),
+            llama3_path=str(Path(args.llama3_path).expanduser()),
+            llama3_quant=args.llama3_quant,
+            llama3_contract_mode=str(args.llama3_contract_mode),
+            llama3_citation_source=str(args.llama3_citation_source),
+            llama3_max_frames=int(args.llama3_max_frames),
+            llama3_lora_adapter=str(args.llama3_lora_adapter),
+            llama3_lora_merge=bool(args.llama3_lora_merge),
             methods=list(args.methods) if args.methods else [],
             nlg_weight=float(args.nlg_weight),
             grounding_weight=float(args.grounding_weight),
@@ -1005,13 +1004,13 @@ def main() -> None:
                 selector_ratio=float(args.selector_ratio),
                 resize_shape=(32, 32, 32),
                 pcg_backend=args.pcg,
-                llama2_path=(str(args.llm_path) if str(args.llm_path).strip() else args.llama2_path),
-                llama2_quant=args.llama2_quant,
-                llama2_contract_mode=str(args.llama2_contract_mode),
-                llama2_citation_source=str(args.llama2_citation_source),
-                llama2_max_frames=int(args.llama2_max_frames),
-                llama2_lora_adapter=str(args.llama2_lora_adapter),
-                llama2_lora_merge=bool(args.llama2_lora_merge),
+                llama3_path=str(Path(args.llama3_path).expanduser()),
+                llama3_quant=args.llama3_quant,
+                llama3_contract_mode=str(args.llama3_contract_mode),
+                llama3_citation_source=str(args.llama3_citation_source),
+                llama3_max_frames=int(args.llama3_max_frames),
+                llama3_lora_adapter=str(args.llama3_lora_adapter),
+                llama3_lora_merge=bool(args.llama3_lora_merge),
                 methods=list(args.methods) if args.methods else [],
                 nlg_weight=float(args.nlg_weight),
                 grounding_weight=float(args.grounding_weight),
@@ -1123,3 +1122,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
