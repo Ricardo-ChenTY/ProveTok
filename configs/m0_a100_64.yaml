@@ -39,7 +39,7 @@ bet:
 
 train:
   epochs: 50
-  batch_size: 16
+  batch_size: 8
   lr: 2.0e-4
   weight_decay: 0.01
   log_every: 50

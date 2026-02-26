@@ -14,8 +14,8 @@ set -euo pipefail
 #   ROOT_DIR=/data/ProveTok
 #   PYTHON_BIN=python
 #   TORCHRUN_BIN=torchrun
-#   GPUS=0,1
-#   NPROC_PER_NODE=2
+#   GPUS=0
+#   NPROC_PER_NODE=1
 #   TARGETS="128 64 256"   # or "128"
 #   MANIFEST_PATH=/data/.../manifest_rrg_dpo.jsonl
 #   DO_PREFLIGHT=1
@@ -28,8 +28,8 @@ PATHS_ENV="${PATHS_ENV:-${ROOT_DIR}/scripts/ops/server_paths.env}"
 
 PYTHON_BIN="${PYTHON_BIN:-python}"
 TORCHRUN_BIN="${TORCHRUN_BIN:-torchrun}"
-GPUS="${GPUS:-0,1}"
-NPROC_PER_NODE="${NPROC_PER_NODE:-2}"
+GPUS="${GPUS:-0}"
+NPROC_PER_NODE="${NPROC_PER_NODE:-1}"
 STAGE="${STAGE:-M0}"
 TARGETS="${TARGETS:-128 64 256}"
 

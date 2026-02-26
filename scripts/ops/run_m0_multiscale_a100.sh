@@ -2,7 +2,7 @@
 set -u
 
 # Multi-scale M0 launcher (64/128/256) with resumable strategy.
-# Designed for Linux servers with multi-GPU A100.
+# Designed for Linux servers with A100 (single-card default; multi-GPU via env override).
 #
 # Usage:
 #   bash scripts/ops/run_m0_multiscale_a100.sh
@@ -11,16 +11,16 @@ set -u
 #   ROOT_DIR=/data/ProveTok
 #   PYTHON_BIN=python
 #   TORCHRUN_BIN=torchrun
-#   GPUS=0,1
-#   NPROC_PER_NODE=2
+#   GPUS=0
+#   NPROC_PER_NODE=1
 #   STAGE=M0
 #   CONFIGS="configs/m0_a100.yaml configs/m0_a100_64.yaml configs/m0_a100_256.yaml"
 
 ROOT_DIR="${ROOT_DIR:-$(pwd)}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 TORCHRUN_BIN="${TORCHRUN_BIN:-torchrun}"
-GPUS="${GPUS:-0,1}"
-NPROC_PER_NODE="${NPROC_PER_NODE:-2}"
+GPUS="${GPUS:-0}"
+NPROC_PER_NODE="${NPROC_PER_NODE:-1}"
 STAGE="${STAGE:-M0}"
 CONFIGS="${CONFIGS:-configs/m0_a100.yaml configs/m0_a100_64.yaml configs/m0_a100_256.yaml}"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"

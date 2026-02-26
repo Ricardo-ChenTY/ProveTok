@@ -41,7 +41,7 @@ TARGETS="128" bash scripts/ops/oneclick_deploy_m0_server.sh
 切卡/进程数：
 
 ```bash
-GPUS=0,1 NPROC_PER_NODE=2 bash scripts/ops/oneclick_deploy_m0_server.sh
+GPUS=0 NPROC_PER_NODE=1 bash scripts/ops/oneclick_deploy_m0_server.sh
 ```
 
 临时切换 manifest（不改原始配置文件）：
