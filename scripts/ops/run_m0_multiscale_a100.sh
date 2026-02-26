@@ -23,6 +23,7 @@ GPUS="${GPUS:-0,1}"
 NPROC_PER_NODE="${NPROC_PER_NODE:-2}"
 STAGE="${STAGE:-M0}"
 CONFIGS="${CONFIGS:-configs/m0_a100.yaml configs/m0_a100_64.yaml configs/m0_a100_256.yaml}"
+STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
 
 TS="$(date +%Y%m%d_%H%M%S)"
 LOG_DIR="${ROOT_DIR}/outputs/_m0_multiscale_logs/${TS}"
@@ -115,8 +116,12 @@ echo "[INFO] gpus=${GPUS} nproc=${NPROC_PER_NODE}"
 echo "[INFO] configs=${CONFIGS}"
 
 for cfg in ${CONFIGS}; do
-  run_one "${cfg}" || true
+  if ! run_one "${cfg}"; then
+    if [ "${STOP_ON_FAIL}" = "1" ]; then
+      echo "[ABORT] stop on first failure because STOP_ON_FAIL=1"
+      exit 1
+    fi
+  fi
 done
 
 echo "[INFO] all requested configs finished. logs at ${LOG_DIR}"
-
