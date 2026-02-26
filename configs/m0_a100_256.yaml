@@ -4,7 +4,7 @@ run_name: m0_ct_rate_256
 
 data:
   type: manifest
-  manifest_path: "./data/manifests/ct_rate_mini_manifest.jsonl"
+  manifest_path: "/data/provetok_datasets/ct_rate_100g_rrg_dpo_all/manifest_rrg_dpo.jsonl"  # server preset
   num_samples: 40000
   vol_shape: [256, 256, 256]
   num_workers: 16

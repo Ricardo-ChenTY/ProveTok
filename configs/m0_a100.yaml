@@ -4,7 +4,7 @@ run_name: m0_ct_rate_128
 
 data:
   type: manifest  # real/manifest 都可；入口会归一化到 manifest
-  manifest_path: "./data/manifests/ct_rate_mini_manifest.jsonl"  # 指向你在 server 上生成的真实清单
+  manifest_path: "/data/provetok_datasets/ct_rate_100g_rrg_dpo_all/manifest_rrg_dpo.jsonl"  # server preset
   num_samples: 40000 
   vol_shape: [128, 128, 128]  # [FIX] 严格对齐论文计划中的 128³ 分辨率
   num_workers: 16             # <--- 【千万别漏了这行！】用 16 个 CPU 核心同时读图解压
