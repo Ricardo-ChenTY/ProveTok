@@ -1,0 +1,22 @@
+seed: 42
+device: auto 
+run_name: m0_ct_rate_128
+
+data:
+  type: real  # 注意：从 synthetic 切换为你们的真实数据逻辑
+  manifest_path: "./data/manifests/ct_rate_mini_manifest.jsonl"  # 指向你在 server 上生成的真实清单
+  num_samples: 40000 
+  vol_shape: [128, 128, 128]  # [FIX] 严格对齐论文计划中的 128³ 分辨率
+  num_workers: 16             # <--- 【千万别漏了这行！】用 16 个 CPU 核心同时读图解压
+
+model:
+  emb_dim: 32
+  cite_topk: 8
+
+train:
+  epochs: 50
+  batch_size: 8       # A100 建议单卡 8 或 16 (视 CPU 核数而定，因为 Octree 是 CPU 搜索)
+  lr: 2.0e-4          # 学习率比 smoke test 调小一点
+  weight_decay: 0.01
+  log_every: 50
+  save_dir: checkpoints_a100

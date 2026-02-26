@@ -59,11 +59,12 @@ def main() -> None:
         emb_dim=int(cfg.get("model", {}).get("emb_dim", 32)),
         dataset_cfg={
             "dataset_type": str(cfg.get("data", {}).get("type", "synthetic")),
+            "manifest_path": str(cfg.get("data", {}).get("manifest_path", "")),  # 确保配置文件中的路径能传给底层
             "num_samples": num_samples,
             "vol_shape": vol_shape,
             "batch_size": batch_size,
             "seed": seed,
-            "num_workers": 0,
+            "num_workers": int(cfg.get("data", {}).get("num_workers", 16)),      # 释放 CPU，启用多线程读图防止 GPU 饿死
         },
         overrides={
             "max_steps": max_steps,

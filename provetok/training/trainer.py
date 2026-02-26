@@ -65,13 +65,33 @@ class Trainer:
             if hasattr(self.stage_config, k):
                 setattr(self.stage_config, k, v)
 
-        self.device = torch.device(config.device)
+        # ==========================================
+        # [双卡 A100 修改]: 引入 Accelerator 接管设备
+        # ==========================================
+        from accelerate import Accelerator
+        # 针对 A100 强制开启 bf16 混合精度，速度翻倍
+        self.accelerator = Accelerator(mixed_precision="bf16")
+        
+        # 将原本的 "cuda" 强制绑定到 accelerator 分配的当前卡 (cuda:0 或 cuda:1)
+        self.device = self.accelerator.device 
         self.emb_dim = config.emb_dim
 
         # 初始化模块
         self._init_modules()
         self._init_optimizer()
         self._init_dataloader()
+
+        # ==========================================
+        # [双卡 A100 修改]: 让 Accelerator 准备所有组件
+        # ==========================================
+        if self.optimizer is not None:
+            self.pcg_head, self.evidence_head, self.optimizer, self.train_loader, self.val_loader, self.scheduler = self.accelerator.prepare(
+                self.pcg_head, self.evidence_head, self.optimizer, self.train_loader, self.val_loader, self.scheduler
+            )
+        else:
+            self.pcg_head, self.evidence_head, self.train_loader, self.val_loader = self.accelerator.prepare(
+                self.pcg_head, self.evidence_head, self.train_loader, self.val_loader
+            )
 
         # 训练状态
         self.global_step = 0
@@ -166,8 +186,10 @@ class Trainer:
             # 训练一步
             step_logs = self._train_step(batch)
 
-            # Logging
-            if step % sc.log_every == 0:
+            # ==========================================
+            # [双卡 A100 修改]: 只在主进程 (GPU 0) 打印和保存
+            # ==========================================
+            if step % sc.log_every == 0 and self.accelerator.is_local_main_process:
                 elapsed = time.time() - t0
                 step_logs["step"] = step
                 step_logs["elapsed_s"] = elapsed
@@ -177,24 +199,28 @@ class Trainer:
                       f"lr={step_logs.get('lr', 0):.2e} "
                       f"({elapsed:.1f}s)")
 
-            # Eval
-            if step > 0 and step % sc.eval_every == 0:
+            # Eval (如果 Eval 太慢，也可以加 self.accelerator.is_local_main_process)
+            if step > 0 and step % sc.eval_every == 0 and self.accelerator.is_local_main_process:
                 eval_result = self._eval_step()
                 print(f"  [Eval  {step:5d}] {eval_result}")
 
-            # Save
-            if step > 0 and step % sc.save_every == 0:
+            # Save (极其重要：只有主卡才能执行保存操作)
+            if step > 0 and step % sc.save_every == 0 and self.accelerator.is_local_main_process:
                 self._save_checkpoint(output_dir / f"ckpt_step{step}.pt")
 
-        # Final save
-        self._save_checkpoint(output_dir / "ckpt_final.pt")
-
-        # Save logs
-        with open(output_dir / "train_logs.json", "w") as f:
-            json.dump(self.logs, f, indent=2)
+        # ==========================================
+        # [双卡 A100 修改]: 训练结束保存
+        # ==========================================
+        if self.accelerator.is_local_main_process:
+            self._save_checkpoint(output_dir / "ckpt_final.pt")
+            with open(output_dir / "train_logs.json", "w") as f:
+                json.dump(self.logs, f, indent=2)
 
         total_time = time.time() - t0
-        print(f"=== Training done: {sc.max_steps} steps in {total_time:.1f}s ===")
+        
+        # 结束提示也只让主卡打印
+        if self.accelerator.is_local_main_process:
+            print(f"=== Training done: {sc.max_steps} steps in {total_time:.1f}s ===")
 
         return {
             "stage": sc.name,
@@ -438,11 +464,15 @@ class Trainer:
 
             total_loss = total_loss + sample_loss / B
 
-        # Backward
+        # Backward with double A100 support (Accelerator 会自动处理梯度缩放和同步)
         if self.optimizer is not None:
             self.optimizer.zero_grad()
-            total_loss.backward()
-            nn.utils.clip_grad_norm_(
+            
+            # 替换原有的 total_loss.backward()
+            self.accelerator.backward(total_loss)
+            
+            # 替换原有的 nn.utils.clip_grad_norm_，它能自动处理 bf16 下的缩放问题
+            self.accelerator.clip_grad_norm_(
                 [p for p in self.pcg_head.parameters() if p.requires_grad] +
                 [p for p in self.evidence_head.parameters() if p.requires_grad],
                 max_norm=1.0,
@@ -522,11 +552,22 @@ class Trainer:
 
     def _save_checkpoint(self, path: Path):
         """保存 checkpoint"""
+        # 安全防线：确保绝对只有主卡执行
+        if getattr(self, "accelerator", None) is not None and not self.accelerator.is_local_main_process:
+            return
+
         path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # ==========================================
+        # [双卡 A100 修改]: 解包 DDP 模型，防止 key 污染
+        # ==========================================
+        pcg_model = self.accelerator.unwrap_model(self.pcg_head) if hasattr(self, "accelerator") else self.pcg_head
+        evidence_model = self.accelerator.unwrap_model(self.evidence_head) if hasattr(self, "accelerator") else self.evidence_head
+        
         torch.save({
             "step": self.global_step,
-            "pcg_head": self.pcg_head.state_dict(),
-            "evidence_head": self.evidence_head.state_dict(),
+            "pcg_head": pcg_model.state_dict(),
+            "evidence_head": evidence_model.state_dict(),
             "optimizer": self.optimizer.state_dict() if self.optimizer else None,
             "config": self.config.__dict__,
             "stage": self.stage_config.name,
