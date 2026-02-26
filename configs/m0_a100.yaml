@@ -3,7 +3,7 @@ device: auto
 run_name: m0_ct_rate_128
 
 data:
-  type: real  # 注意：从 synthetic 切换为你们的真实数据逻辑
+  type: manifest  # real/manifest 都可；入口会归一化到 manifest
   manifest_path: "./data/manifests/ct_rate_mini_manifest.jsonl"  # 指向你在 server 上生成的真实清单
   num_samples: 40000 
   vol_shape: [128, 128, 128]  # [FIX] 严格对齐论文计划中的 128³ 分辨率
@@ -12,6 +12,31 @@ data:
 model:
   emb_dim: 32
   cite_topk: 8
+  # Stage-1 optional real encoder path; keep none for current workflow safety.
+  encoder_backend: "none"  # "none" | "simple_cnn3d" | "swin_unetr"
+  encoder_ckpt: ""
+  in_channels: 1
+  feature_size: 48
+  out_channels: 14
+
+verifier:
+  mode: "rules"     # "rules" | "pp_v1_1"
+  l_min: 2
+  enable_r5: false  # optional R5 hook (requires anatomy labels in manifest)
+  enable_r6: false  # optional R6 hook (requires semantic scorer wiring)
+  r6_threshold: 0.3
+  semantic_rerank_on_violation: false
+  semantic_rerank_topk: 3
+  semantic_rerank_rule_ids: ["R5", "R6"]
+  despecify_on_remaining_issues: false
+  despecify_confidence_cap: 0.6
+
+bet:
+  budget_tokens: 128
+  steps: 5
+  max_depth: 4
+  epsilon: 0.01
+  verifier_refresh_period: 1
 
 train:
   epochs: 50

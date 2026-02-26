@@ -155,6 +155,33 @@ def get_record_mask_path(rec: ManifestRecord) -> Optional[str]:
     return None
 
 
+def get_record_anatomy_path(rec: ManifestRecord) -> Optional[str]:
+    """Best-effort anatomy atlas/label path resolution for R5 checks."""
+    extra = rec.extra or {}
+    for k in ("anatomy_label_path", "atlas_label_path", "totalseg_label_path", "tsseg_label_path"):
+        v = extra.get(k)
+        if isinstance(v, str) and v:
+            return v
+    return None
+
+
+def get_record_anatomy_label_map(rec: ManifestRecord) -> Dict[int, str]:
+    """Best-effort integer-label -> anatomy-name mapping."""
+    extra = rec.extra or {}
+    raw = extra.get("anatomy_label_map")
+    out: Dict[int, str] = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            try:
+                ki = int(k)
+            except Exception:
+                continue
+            vs = str(v or "").strip()
+            if vs:
+                out[ki] = vs
+    return out
+
+
 def save_manifest_jsonl(records: Sequence[ManifestRecord], path: str) -> None:
     """Write a manifest JSONL in a stable, tool-friendly format."""
     p = Path(str(path))

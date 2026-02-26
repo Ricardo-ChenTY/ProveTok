@@ -45,6 +45,12 @@ class TrainerConfig:
 
     # 覆盖 stage config 的值
     overrides: Dict[str, Any] = field(default_factory=dict)
+    # Optional encoder config (minimal-invasive): keep default None/toy path.
+    encoder_cfg: Dict[str, Any] = field(default_factory=dict)
+    # Optional verifier config. Defaults preserve existing behavior.
+    verifier_cfg: Dict[str, Any] = field(default_factory=dict)
+    # Optional PCG head config.
+    pcg_cfg: Dict[str, Any] = field(default_factory=dict)
 
 
 class Trainer:
@@ -94,22 +100,88 @@ class Trainer:
             )
 
         # 训练状态
-        self.global_step = 0
+        self.global_step = -1
         self.best_metric = float("inf")
         self.logs: List[Dict[str, Any]] = []
 
     def _init_modules(self):
         """初始化各模块"""
         # PCG Head
-        self.pcg_head = PCGHead(emb_dim=self.emb_dim).to(self.device)
+        pcg_cfg = dict(self.config.pcg_cfg or {})
+        self.pcg_head = PCGHead(
+            emb_dim=self.emb_dim,
+            top_k_citations=int(pcg_cfg.get("top_k_citations", 3)),
+            tau_refuse=float(pcg_cfg.get("tau_refuse", 0.55)),
+        ).to(self.device)
 
         # Evidence Head
         self.evidence_head = EvidenceHead(emb_dim=self.emb_dim).to(self.device)
 
         # Deterministic verifier (non-trainable)
-        from ..verifier.rules import create_verifier
+        vf_cfg = dict(self.config.verifier_cfg or {})
+        self.verifier_cfg = dict(vf_cfg)
+        vf_mode = str(vf_cfg.get("mode", "rules")).strip().lower()
+        if vf_mode in ("pp", "pp_v1_1", "r1r4"):
+            from ..verifier.pp_v1_1 import create_pp_verifier
 
-        self.verifier = create_verifier()
+            self.verifier = create_pp_verifier(l_min=int(vf_cfg.get("l_min", 2)))
+        else:
+            from ..verifier.rules import create_verifier
+
+            self.verifier = create_verifier(
+                enable_r5=bool(vf_cfg.get("enable_r5", False)),
+                enable_r6=bool(vf_cfg.get("enable_r6", False)),
+                r6_threshold=float(vf_cfg.get("r6_threshold", 0.3)),
+            )
+
+        # Optional real 3D encoder backend (frozen): toy path stays default.
+        self.token_encoder_model = None
+        enc_cfg = dict(self.config.encoder_cfg or {})
+        enc_backend = str(enc_cfg.get("backend", "none")).strip().lower()
+        if enc_backend in ("simple_cnn3d", "cnn3d"):
+            from ..bet.encoders.simple_cnn3d import SimpleCNN3D
+
+            self.token_encoder_model = SimpleCNN3D(
+                in_channels=int(enc_cfg.get("in_channels", 1)),
+                emb_dim=int(enc_cfg.get("emb_dim", self.emb_dim)),
+            ).to(self.device)
+            self.token_encoder_model.eval()
+            for p in self.token_encoder_model.parameters():
+                p.requires_grad = False
+        elif enc_backend in ("swin_unetr", "swinunetr"):
+            try:
+                from monai.networks.nets import SwinUNETR  # type: ignore
+            except Exception as e:  # noqa: BLE001
+                raise RuntimeError(
+                    "encoder_backend=swin_unetr requires MONAI. Install with `pip install monai`."
+                ) from e
+
+            self.token_encoder_model = SwinUNETR(
+                img_size=(
+                    int(enc_cfg.get("img_size", 128)),
+                    int(enc_cfg.get("img_size", 128)),
+                    int(enc_cfg.get("img_size", 128)),
+                ),
+                in_channels=int(enc_cfg.get("in_channels", 1)),
+                out_channels=int(enc_cfg.get("out_channels", 14)),
+                feature_size=int(enc_cfg.get("feature_size", 48)),
+            ).to(self.device)
+            ckpt = str(enc_cfg.get("checkpoint_path", "") or "").strip()
+            if ckpt:
+                state = torch.load(ckpt, map_location="cpu", weights_only=False)
+                if isinstance(state, dict) and "state_dict" in state:
+                    state = state["state_dict"]
+                if isinstance(state, dict):
+                    cleaned = {}
+                    for k, v in state.items():
+                        kk = str(k)
+                        if kk.startswith("module."):
+                            kk = kk[len("module.") :]
+                        cleaned[kk] = v
+                    self.token_encoder_model.load_state_dict(cleaned, strict=False)
+            self.token_encoder_model.eval()
+            for p in self.token_encoder_model.parameters():
+                p.requires_grad = False
 
         # 应用冻结
         sc = self.stage_config
@@ -173,7 +245,8 @@ class Trainer:
         data_iter = iter(self.train_loader)
         t0 = time.time()
 
-        for step in range(sc.max_steps):
+        start_step = max(0, int(self.global_step) + 1)
+        for step in range(start_step, sc.max_steps):
             self.global_step = step
 
             # 获取 batch
@@ -224,7 +297,7 @@ class Trainer:
 
         return {
             "stage": sc.name,
-            "total_steps": sc.max_steps,
+            "total_steps": max(0, int(sc.max_steps) - int(start_step)),
             "total_time_s": total_time,
             "final_loss": self.logs[-1].get("loss", 0) if self.logs else 0,
         }
@@ -237,6 +310,9 @@ class Trainer:
         volumes = batch["volume"].to(self.device)  # (B, D, H, W)
         gt_frames_batch = batch["frames"]           # List[List[Frame]]
         lesion_masks_batch = batch.get("lesion_masks", [{} for _ in range(volumes.shape[0])])
+        anatomy_labels_batch = batch.get("anatomy_labels", [None for _ in range(volumes.shape[0])])
+        anatomy_label_map_batch = batch.get("anatomy_label_map", [{} for _ in range(volumes.shape[0])])
+        affines_batch = batch.get("affine_zyx", [None for _ in range(volumes.shape[0])])
 
         total_loss = torch.tensor(0.0, device=self.device, requires_grad=True)
         log = {}
@@ -248,6 +324,9 @@ class Trainer:
             vol = volumes[b]  # (D, H, W)
             gt_frames = gt_frames_batch[b]
             lesion_masks = lesion_masks_batch[b] if isinstance(lesion_masks_batch, list) else {}
+            anatomy_labels = anatomy_labels_batch[b] if isinstance(anatomy_labels_batch, list) else None
+            anatomy_label_map = anatomy_label_map_batch[b] if isinstance(anatomy_label_map_batch, list) else {}
+            affine_zyx = affines_batch[b] if isinstance(affines_batch, list) else None
 
             # 1. BET tokenization
             sample_seed = int(self.config.seed) + int(self.global_step) * 10_000 + int(b)
@@ -273,16 +352,34 @@ class Trainer:
                     verifier_fn=_ver_fn,
                     emb_dim=int(self.emb_dim),
                     seed=int(sample_seed),
+                    encoder=self.token_encoder_model,
+                    affine_zyx=affine_zyx,
+                    anatomy_labels=anatomy_labels,
+                    anatomy_label_map=anatomy_label_map,
                     evidence_head=None,          # keep allocation device-agnostic for training smoke
                     use_evidence_head=False,     # deterministic allocator (evidence traces + uncertainty)
                     epsilon=float(sc.epsilon),
                     max_depth=int(sc.max_depth),
                     verifier_refresh_period=int(sc.verifier_refresh_period),
+                    semantic_rerank_on_violation=bool(self.verifier_cfg.get("semantic_rerank_on_violation", False)),
+                    semantic_rerank_topk=int(self.verifier_cfg.get("semantic_rerank_topk", 3)),
+                    semantic_rerank_rule_ids=self.verifier_cfg.get("semantic_rerank_rule_ids", ["R5", "R6"]),
+                    despecify_on_remaining_issues=bool(self.verifier_cfg.get("despecify_on_remaining_issues", False)),
+                    despecify_confidence_cap=float(self.verifier_cfg.get("despecify_confidence_cap", 0.6)),
                 )
                 tokens = refine.tokens
             else:
                 cells = [root_cell()]
-                tokens = encode_tokens(vol_cpu, cells, emb_dim=self.emb_dim, seed=sample_seed)
+                tokens = encode_tokens(
+                    vol_cpu,
+                    cells,
+                    emb_dim=self.emb_dim,
+                    seed=sample_seed,
+                    encoder=self.token_encoder_model,
+                    affine_zyx=affine_zyx,
+                    anatomy_labels=anatomy_labels,
+                    anatomy_label_map=anatomy_label_map,
+                )
 
             if not tokens:
                 continue
@@ -495,11 +592,17 @@ class Trainer:
             for batch in self.val_loader:
                 volumes = batch["volume"].to(self.device)
                 gt_frames_batch = batch["frames"]
+                anatomy_labels_batch = batch.get("anatomy_labels", [None for _ in range(volumes.shape[0])])
+                anatomy_label_map_batch = batch.get("anatomy_label_map", [{} for _ in range(volumes.shape[0])])
+                affines_batch = batch.get("affine_zyx", [None for _ in range(volumes.shape[0])])
 
                 B = volumes.shape[0]
                 for b in range(B):
                     vol = volumes[b]
                     gt_frames = gt_frames_batch[b]
+                    anatomy_labels = anatomy_labels_batch[b] if isinstance(anatomy_labels_batch, list) else None
+                    anatomy_label_map = anatomy_label_map_batch[b] if isinstance(anatomy_label_map_batch, list) else {}
+                    affine_zyx = affines_batch[b] if isinstance(affines_batch, list) else None
 
                     sc = self.stage_config
                     sample_seed = int(self.config.seed) + int(self.global_step) * 10_000 + int(b)
@@ -524,16 +627,34 @@ class Trainer:
                             verifier_fn=_ver_fn,
                             emb_dim=int(self.emb_dim),
                             seed=int(sample_seed),
+                            encoder=self.token_encoder_model,
+                            affine_zyx=affine_zyx,
+                            anatomy_labels=anatomy_labels,
+                            anatomy_label_map=anatomy_label_map,
                             evidence_head=None,
                             use_evidence_head=False,
                             epsilon=float(sc.epsilon),
                             max_depth=int(sc.max_depth),
                             verifier_refresh_period=int(sc.verifier_refresh_period),
+                            semantic_rerank_on_violation=bool(self.verifier_cfg.get("semantic_rerank_on_violation", False)),
+                            semantic_rerank_topk=int(self.verifier_cfg.get("semantic_rerank_topk", 3)),
+                            semantic_rerank_rule_ids=self.verifier_cfg.get("semantic_rerank_rule_ids", ["R5", "R6"]),
+                            despecify_on_remaining_issues=bool(self.verifier_cfg.get("despecify_on_remaining_issues", False)),
+                            despecify_confidence_cap=float(self.verifier_cfg.get("despecify_confidence_cap", 0.6)),
                         )
                         tokens = refine.tokens
                     else:
                         cells = [root_cell()]
-                        tokens = encode_tokens(vol_cpu, cells, emb_dim=self.emb_dim, seed=sample_seed)
+                        tokens = encode_tokens(
+                            vol_cpu,
+                            cells,
+                            emb_dim=self.emb_dim,
+                            seed=sample_seed,
+                            encoder=self.token_encoder_model,
+                            affine_zyx=affine_zyx,
+                            anatomy_labels=anatomy_labels,
+                            anatomy_label_map=anatomy_label_map,
+                        )
 
                     if not tokens:
                         continue
@@ -574,11 +695,13 @@ class Trainer:
     def load_checkpoint(self, path: str):
         """加载 checkpoint"""
         ckpt = torch.load(path, map_location=self.device, weights_only=False)
-        self.pcg_head.load_state_dict(ckpt["pcg_head"])
-        self.evidence_head.load_state_dict(ckpt["evidence_head"])
+        pcg_model = self.accelerator.unwrap_model(self.pcg_head) if hasattr(self, "accelerator") else self.pcg_head
+        evidence_model = self.accelerator.unwrap_model(self.evidence_head) if hasattr(self, "accelerator") else self.evidence_head
+        pcg_model.load_state_dict(ckpt["pcg_head"])
+        evidence_model.load_state_dict(ckpt["evidence_head"])
         if self.optimizer and ckpt.get("optimizer"):
             self.optimizer.load_state_dict(ckpt["optimizer"])
-        self.global_step = ckpt.get("step", 0)
+        self.global_step = int(ckpt.get("step", -1))
 
     def _count_params(self) -> int:
         """统计可训练参数数量"""

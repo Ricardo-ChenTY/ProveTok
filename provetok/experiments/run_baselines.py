@@ -80,10 +80,10 @@ class BaselineRunConfig:
     costs_json: str = ""
     selector_ratio: float = 0.1
     resize_shape: Tuple[int, int, int] = (64, 64, 64)
-    pcg_backend: str = "toy"  # "toy" or "llama2"
-    llama2_path: str = "/data/models/Llama-2-7b-chat-hf"
+    pcg_backend: str = "toy"  # "toy" | "llama2" | "llama3"
+    llama2_path: str = "/data/models/Meta-Llama-3.1-8B-Instruct"
     llama2_quant: str = "fp16"  # "fp16" or "8bit"
-    llama2_contract_mode: str = "full"  # "free_form" | "schema_only" | "schema_citations" | "full"
+    llama2_contract_mode: str = "full"  # "free_form" | "schema_only" | "schema_citations" | "full" | "inline_citation"
     llama2_citation_source: str = "score_override"  # "score_override" | "llm"
     llama2_max_frames: int = 1
     llama2_lora_adapter: str = ""  # optional LoRA/PEFT adapter path (pp.md §6.6)
@@ -158,6 +158,8 @@ def _apply_token_scores(tokens: List[Token], *, token_score_fn: Any) -> List[Tok
                 center_voxel=tuple(getattr(t, "center_voxel", (0.0, 0.0, 0.0))),
                 bounds_mm=getattr(t, "bounds_mm", None),
                 center_mm=getattr(t, "center_mm", None),
+                anatomy_label=getattr(t, "anatomy_label", None),
+                ctclip_similarity=getattr(t, "ctclip_similarity", None),
             )
         )
     return out
@@ -208,6 +210,8 @@ def _fuse_token_scores_mul(
                 center_voxel=tuple(getattr(t, "center_voxel", (0.0, 0.0, 0.0))),
                 bounds_mm=getattr(t, "bounds_mm", None),
                 center_mm=getattr(t, "center_mm", None),
+                anatomy_label=getattr(t, "anatomy_label", None),
+                ctclip_similarity=getattr(t, "ctclip_similarity", None),
             )
         )
     return out
@@ -326,7 +330,7 @@ def run_baselines(cfg: BaselineRunConfig) -> Dict[str, Any]:
         dump_path.parent.mkdir(parents=True, exist_ok=True)
         dump_f = dump_path.open("w", encoding="utf-8")
 
-    if cfg.pcg_backend == "llama2":
+    if cfg.pcg_backend in ("llama2", "llama3"):
         # Cache LLM instances when running multi-budget sweeps in a single process.
         # This is required for practicality (loading the model repeatedly is prohibitive).
         max_new_tokens = max(128, int(cfg.b_gen))
@@ -853,10 +857,11 @@ def main() -> None:
     ap.add_argument("--manifest", type=str, default="", help="Manifest path when dataset-type=manifest")
     ap.add_argument("--split", type=str, default="test", choices=["train", "val", "test"])
     ap.add_argument("--resize-shape", type=int, nargs=3, default=[64, 64, 64], help="Resize (D,H,W) for manifest volumes")
-    ap.add_argument("--pcg", type=str, default="toy", choices=["toy", "llama2"], help="PCG backend")
-    ap.add_argument("--llama2-path", type=str, default="/data/models/Llama-2-7b-chat-hf")
+    ap.add_argument("--pcg", type=str, default="toy", choices=["toy", "llama2", "llama3"], help="PCG backend")
+    ap.add_argument("--llama2-path", type=str, default="/data/models/Meta-Llama-3.1-8B-Instruct", help="Path to HF causal LM (Llama-2/Llama-3, etc.)")
+    ap.add_argument("--llm-path", type=str, default="", help="Alias of --llama2-path (preferred for non-Llama2 models).")
     ap.add_argument("--llama2-quant", type=str, default="fp16", choices=["fp16", "8bit"])
-    ap.add_argument("--llama2-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full"])
+    ap.add_argument("--llama2-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full", "inline_citation"])
     ap.add_argument("--llama2-citation-source", type=str, default="score_override", choices=["score_override", "llm"])
     ap.add_argument("--llama2-max-frames", type=int, default=1)
     ap.add_argument("--llama2-lora-adapter", type=str, default="", help="Optional LoRA/PEFT adapter path")
@@ -947,7 +952,7 @@ def main() -> None:
             selector_ratio=float(args.selector_ratio),
             resize_shape=tuple(args.resize_shape),
             pcg_backend=args.pcg,
-            llama2_path=args.llama2_path,
+            llama2_path=(str(args.llm_path) if str(args.llm_path).strip() else args.llama2_path),
             llama2_quant=args.llama2_quant,
             llama2_contract_mode=str(args.llama2_contract_mode),
             llama2_citation_source=str(args.llama2_citation_source),
@@ -1000,7 +1005,7 @@ def main() -> None:
                 selector_ratio=float(args.selector_ratio),
                 resize_shape=(32, 32, 32),
                 pcg_backend=args.pcg,
-                llama2_path=args.llama2_path,
+                llama2_path=(str(args.llm_path) if str(args.llm_path).strip() else args.llama2_path),
                 llama2_quant=args.llama2_quant,
                 llama2_contract_mode=str(args.llama2_contract_mode),
                 llama2_citation_source=str(args.llama2_citation_source),

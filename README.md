@@ -3,6 +3,7 @@
 本仓库当前主线以 `pp.md` + `docs/plan.md` + `docs/experiment.md` 为准，目标是把 **CT-RATE 的 Table1 口径**（含临床/结构/LLM 指标 + proof 指标 + 统计协议）做成 **可复现的一键流水线**，并支持把外部 baseline 的输出统一成 `pred_jsonl` 进入同一评测入口。
 
 - 当前主线：CT-RATE（RRG-DPO 可比预处理）+ 内部方法变体 + 外部 baseline（先落地 CT2Rep）
+- R1 当前口径：主实验使用 `128^3`；`64^3/256^3` 只做 ablation
 - 暂缓（deferred）：`pp.md §6.1` 的 CT-RATE official split 复现
 - 入口文档：`docs/plan.md`（范围/术语/claims）与 `docs/experiment.md`（可跑命令台账）
 
@@ -69,6 +70,30 @@ python scripts/rd_queue.py sync
 - `outputs/E0214-ct_rate_rrg_dpo_full/pairs.jsonl`
 - `outputs/E0229-ct2rep_pred_full/preds_ct2rep.jsonl`
 - `outputs/E0230-table1_with_ct2rep_full/paper_metrics.json`
+
+`paper_metrics.json` 中会包含 R1 相关代理指标：`finding_precision / finding_recall / finding_f1 / abstention_rate`（基于 report 文本抽取，便于先做 round-by-round 修复）。
+
+### 如果你现在只有原始 CT-RATE 文件（还没有 manifest）
+
+先用下面脚本把本地体数据目录 + 报告表（csv/xlsx/jsonl）转成 `manifest.jsonl`：
+
+```bash
+python scripts/data/build_ct_rate_manifest.py \
+  --ct-root /data/provetok_datasets/ct_rate_raw/dataset \
+  --report-file /data/provetok_datasets/ct_rate_raw/reports.csv \
+  --out-manifest /data/provetok_datasets/ct_rate_raw/manifest.jsonl \
+  --dataset-name ct_rate_raw \
+  --split-from path
+```
+
+然后再进入主线的 RRG-DPO 预处理：
+
+```bash
+python scripts/data/preprocess_manifest_rrg_dpo.py \
+  --in-manifest /data/provetok_datasets/ct_rate_raw/manifest.jsonl \
+  --out-root /data/provetok_datasets/ct_rate_100g_rrg_dpo_all \
+  --splits train val test --dtype float16
+```
 
 ## 外部 baselines 如何对比（体现 SOTA 的方式）
 

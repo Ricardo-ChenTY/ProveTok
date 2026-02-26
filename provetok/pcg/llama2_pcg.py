@@ -77,10 +77,12 @@ class Llama2PCGConfig:
     max_tokens_in_prompt: int = 64   # keep prompt bounded (context-safe default)
     max_frames: int = 1              # keep JSON short; set >1 for multi-finding reports
     fallback_finding: str = "opacity"  # used when parsing fails or frames are empty
-    contract_mode: str = "full"        # "free_form" | "schema_only" | "schema_citations" | "full"
+    contract_mode: str = "full"        # "free_form" | "schema_only" | "schema_citations" | "full" | "inline_citation"
     citation_source: str = "score_override"  # "score_override" | "llm"
     lora_adapter_path: str = ""  # optional PEFT adapter (LoRA) path
     lora_merge: bool = False        # optionally merge adapter weights for inference
+    inline_citation_prefix: str = "CIT"
+    inline_citation_digits: int = 3
 
 
 def build_llama2_json_prompt(tokens: List[Token], *, cfg: Llama2PCGConfig, max_tokens_in_prompt: Optional[int] = None) -> str:
@@ -167,6 +169,126 @@ def build_llama2_free_form_prompt(tokens: List[Token], *, cfg: Llama2PCGConfig, 
         + "\n"
     )
     return f"<s>[INST] <<SYS>>\n{sys_msg}\n<</SYS>>\n\n{user_msg} [/INST]"
+
+
+def _format_citation_tag(idx: int, *, cfg: Llama2PCGConfig) -> str:
+    prefix = str(getattr(cfg, "inline_citation_prefix", "CIT") or "CIT").strip().upper()
+    if not re.match(r"^[A-Z][A-Z0-9_]*$", prefix):
+        prefix = "CIT"
+    digits = max(2, int(getattr(cfg, "inline_citation_digits", 3)))
+    return f"{prefix}_{int(idx):0{digits}d}"
+
+
+def build_llama2_inline_citation_prompt(
+    tokens: List[Token],
+    *,
+    cfg: Llama2PCGConfig,
+    max_tokens_in_prompt: Optional[int] = None,
+) -> tuple[str, Dict[str, int]]:
+    """Build a free-form report prompt with explicit inline citation tags."""
+    limit = int(cfg.max_tokens_in_prompt if max_tokens_in_prompt is None else max_tokens_in_prompt)
+    toks = sorted(tokens, key=lambda t: (-float(t.score), int(t.token_id)))[: max(0, limit)]
+
+    tag_to_token_id: Dict[str, int] = {}
+    tok_lines: List[str] = []
+    for i, t in enumerate(toks, start=1):
+        tag = _format_citation_tag(i, cfg=cfg)
+        tag_to_token_id[tag] = int(t.token_id)
+        tok_lines.append(
+            f"- [{tag}] token_id={t.token_id} cell_id={t.cell_id} score={t.score:.3f} "
+            f"uncertainty={t.uncertainty:.3f} level={t.level}"
+        )
+
+    max_frames = max(0, int(getattr(cfg, "max_frames", 1)))
+    topk = max(1, int(getattr(cfg, "topk_citations", 3)))
+    sys_msg = (
+        "You are a radiology report generator. Output ONLY plain text. "
+        "Use inline evidence citations from the allowed tags."
+    )
+    user_msg = (
+        "Write a short radiology report (1-4 sentences) describing up to "
+        f"{max_frames} findings.\n"
+        "For each positive finding sentence, include 1-" + str(topk) + " inline citation tags.\n"
+        "Format example: Right upper lobe nodule [CIT_001, CIT_002] suspicious for malignancy.\n"
+        "Do not invent tags. Use ONLY tags from the list below.\n"
+        "Allowed finding terms (preferred): " + ", ".join(FINDINGS) + ".\n"
+        "Evidence tag list:\n"
+        + "\n".join(tok_lines)
+        + "\n"
+    )
+    return f"<s>[INST] <<SYS>>\n{sys_msg}\n<</SYS>>\n\n{user_msg} [/INST]", tag_to_token_id
+
+
+def _extract_inline_citations(
+    report_text: str,
+    *,
+    tag_to_token_id: Dict[str, int],
+    topk_citations: int,
+    max_frames: int,
+) -> tuple[List[Frame], Dict[int, List[int]], str]:
+    """Parse inline citation tags from report text and align them to extracted frames."""
+    raw = str(report_text or "").strip()
+    if not raw:
+        return [], {}, ""
+
+    # Normalize common full-width punctuations for multilingual report drafts.
+    norm = (
+        raw.replace("，", ",")
+        .replace("；", ";")
+        .replace("。", ".")
+        .replace("！", "!")
+        .replace("？", "?")
+        .replace("【", "[")
+        .replace("】", "]")
+        .replace("（", "(")
+        .replace("）", ")")
+    )
+
+    def _canon_tag(tag: str) -> str:
+        t = str(tag or "").strip().upper()
+        m = re.match(r"^([A-Z][A-Z0-9_]*?)_?(\d{2,5})$", t)
+        if m is None:
+            return t
+        return f"{m.group(1)}_{m.group(2)}"
+
+    # Normalize citation tags to upper-case for robust matching.
+    tag_to_tid = {_canon_tag(str(k)): int(v) for k, v in (tag_to_token_id or {}).items()}
+    sent_split = re.compile(r"[\n\.\!\?;]+")
+    sents = [s.strip() for s in sent_split.split(norm) if s.strip()]
+
+    sent_citations: Dict[int, List[int]] = {}
+    cleaned_sents: List[str] = []
+    for i, sent in enumerate(sents):
+        tags_raw = re.findall(r"\b([A-Za-z][A-Za-z0-9_]*_?\d{2,5})\b", sent)
+        cited_ids: List[int] = []
+        seen: set[int] = set()
+        for tr in tags_raw:
+            tu = _canon_tag(tr)
+            if tu not in tag_to_tid:
+                continue
+            tid = int(tag_to_tid[tu])
+            if tid in seen:
+                continue
+            seen.add(tid)
+            cited_ids.append(tid)
+            if len(cited_ids) >= max(1, int(topk_citations)):
+                break
+        sent_citations[int(i)] = cited_ids
+
+        # Remove bracketed and standalone citation tags before frame extraction.
+        no_brackets = re.sub(r"\[[^\]]*?[A-Za-z][A-Za-z0-9_]*_?\d{2,5}[^\]]*?\]", " ", sent)
+        no_tags = re.sub(r"\b[A-Za-z][A-Za-z0-9_]*_?\d{2,5}\b", " ", no_brackets)
+        cleaned_sents.append(" ".join(no_tags.split()))
+
+    cleaned_text = ". ".join([s for s in cleaned_sents if s]).strip()
+    extractor = FrameExtractor()
+    frames = extractor.extract_frames(cleaned_text)
+    frames = frames[: max(0, int(max_frames))]
+
+    citations: Dict[int, List[int]] = {}
+    for k in range(len(frames)):
+        citations[int(k)] = list(sent_citations.get(int(k), []))
+    return frames, citations, cleaned_text
 
 
 def parse_llm_json(text: str) -> Dict[str, Any]:
@@ -381,6 +503,92 @@ class Llama2PCG:
     def _sanitize(self, d: Dict, *, token_ids: List[int]) -> Generation:
         return sanitize_generation_dict(d, token_ids=token_ids, cfg=self.cfg)
 
+    def _apply_score_override(self, gen: Generation, tokens: List[Token]) -> Generation:
+        """Deterministic score-based citation repair with diversity tie-break."""
+        if not gen.frames:
+            return gen
+
+        def _center(tok: Token) -> Optional[tuple[float, float, float]]:
+            cell = parse_cell_id(str(tok.cell_id))
+            if cell is None:
+                return None
+            n = 2 ** int(cell.level)
+            if n <= 0:
+                return None
+            # Normalized center in (z,y,x) within [0,1].
+            return (
+                (float(cell.iz) + 0.5) / float(n),
+                (float(cell.iy) + 0.5) / float(n),
+                (float(cell.ix) + 0.5) / float(n),
+            )
+
+        centers: Dict[int, Optional[tuple[float, float, float]]] = {int(t.token_id): _center(t) for t in tokens}
+        ranked = sorted(tokens, key=lambda t: (-float(t.score), -float(t.uncertainty), int(t.token_id)))
+
+        k = max(0, min(int(self.cfg.topk_citations), len(ranked)))
+        chosen: List[Token] = []
+        if k > 0:
+            chosen.append(ranked[0])
+        while len(chosen) < k:
+            best = None
+            best_key = None
+            for cand in ranked:
+                if any(int(cand.token_id) == int(x.token_id) for x in chosen):
+                    continue
+                c0 = centers.get(int(cand.token_id))
+                if c0 is None:
+                    min_d2 = 0.0
+                else:
+                    min_d2 = float("inf")
+                    for sel in chosen:
+                        c1 = centers.get(int(sel.token_id))
+                        if c1 is None:
+                            continue
+                        dz = float(c0[0]) - float(c1[0])
+                        dy = float(c0[1]) - float(c1[1])
+                        dx = float(c0[2]) - float(c1[2])
+                        d2 = dz * dz + dy * dy + dx * dx
+                        if d2 < min_d2:
+                            min_d2 = d2
+                    if min_d2 == float("inf"):
+                        min_d2 = 0.0
+                key = (
+                    float(min_d2),  # diversity
+                    float(cand.score),
+                    float(cand.uncertainty),
+                    -int(cand.token_id),  # deterministic tiebreak (prefer smaller id)
+                )
+                if best_key is None or key > best_key:
+                    best = cand
+                    best_key = key
+            if best is None:
+                break
+            chosen.append(best)
+
+        top_ids = [int(t.token_id) for t in chosen]
+        citations = {int(i): list(top_ids) for i in range(len(gen.frames))}
+        citations_ref = {int(i): [str(int(x)) for x in top_ids] for i in range(len(gen.frames))}
+        gen = Generation(
+            frames=gen.frames,
+            citations=citations,
+            q=gen.q,
+            refusal=gen.refusal,
+            citations_ref=citations_ref,
+            text="",
+            impression=str(getattr(gen, 'impression', '') or ''),
+            report_text=str(getattr(gen, 'report_text', '') or ''),
+        )
+        return Generation(
+            frames=gen.frames,
+            citations=citations,
+            q=gen.q,
+            refusal=gen.refusal,
+            citations_ref=gen.citations_ref,
+            text=render_generation_text(gen),
+            impression=str(getattr(gen, 'impression', '') or ''),
+            report_text=str(getattr(gen, 'report_text', '') or ''),
+        )
+
     @torch.no_grad()
     def __call__(self, tokens: List[Token]) -> Generation:
         if not tokens:
@@ -391,14 +599,31 @@ class Llama2PCG:
         # Keep a small margin for special tokens; avoid hitting context limit.
         max_input = max(1, int(max_ctx) - int(max_new) - 8)
 
+        mode = str(getattr(self.cfg, "contract_mode", "full")).strip().lower()
+        inline_tag_map: Dict[str, int] = {}
+
         # Some runs may produce very long token lists; shrink the evidence token
         # section until the prompt fits in the model context window.
         limit = int(self.cfg.max_tokens_in_prompt)
-        prompt = self._build_prompt(tokens, max_tokens_in_prompt=limit)
+        if mode == "inline_citation":
+            prompt, inline_tag_map = build_llama2_inline_citation_prompt(
+                tokens,
+                cfg=self.cfg,
+                max_tokens_in_prompt=limit,
+            )
+        else:
+            prompt = self._build_prompt(tokens, max_tokens_in_prompt=limit)
         inputs = self.tokenizer(prompt, return_tensors="pt")
         while int(inputs["input_ids"].shape[1]) > max_input and limit > 8:
             limit = max(8, limit // 2)
-            prompt = self._build_prompt(tokens, max_tokens_in_prompt=limit)
+            if mode == "inline_citation":
+                prompt, inline_tag_map = build_llama2_inline_citation_prompt(
+                    tokens,
+                    cfg=self.cfg,
+                    max_tokens_in_prompt=limit,
+                )
+            else:
+                prompt = self._build_prompt(tokens, max_tokens_in_prompt=limit)
             inputs = self.tokenizer(prompt, return_tensors="pt")
         inputs = inputs.to(self.model.device)
         do_sample = bool(float(self.cfg.temperature) > 0.0)
@@ -415,7 +640,6 @@ class Llama2PCG:
         gen_ids = out[0][inputs["input_ids"].shape[1] :]
         text = self.tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
 
-        mode = str(getattr(self.cfg, "contract_mode", "full")).strip().lower()
         if mode == "free_form":
             extractor = FrameExtractor()
             frames = extractor.extract_frames(text)[: max(0, int(getattr(self.cfg, "max_frames", 1)))]
@@ -452,6 +676,63 @@ class Llama2PCG:
                 text="",
                 report_text=str(text),
             )
+
+        if mode == "inline_citation":
+            frames, citations, _ = _extract_inline_citations(
+                text,
+                tag_to_token_id=inline_tag_map,
+                topk_citations=int(self.cfg.topk_citations),
+                max_frames=int(getattr(self.cfg, "max_frames", 1)),
+            )
+            if not frames:
+                finding = str(getattr(self.cfg, "fallback_finding", "opacity")).lower()
+                if finding not in set(FINDINGS):
+                    finding = "opacity"
+                frames = [
+                    Frame(
+                        finding=finding,
+                        polarity="present",
+                        laterality="unspecified",
+                        confidence=0.5,
+                        location="unspecified",
+                        size_bin="unspecified",
+                        severity="unspecified",
+                        uncertain=True,
+                    )
+                ]
+                citations = {0: []}
+
+            q = {int(i): _clamp01(float(getattr(fr, "confidence", 0.5))) for i, fr in enumerate(frames)}
+            refusal = {
+                int(i): bool(q[int(i)] < float(self.cfg.tau_refuse) and str(getattr(fr, "polarity", "")) in ("present", "positive"))
+                for i, fr in enumerate(frames)
+            }
+            citations_ref = {
+                int(i): [str(int(x)) for x in (citations.get(int(i), []) or [])]
+                for i in range(len(frames))
+            }
+            tmp = Generation(
+                frames=frames,
+                citations={int(i): list(citations.get(int(i), []) or []) for i in range(len(frames))},
+                q=q,
+                refusal=refusal,
+                citations_ref=citations_ref,
+                text="",
+                report_text=str(text),
+            )
+            gen = Generation(
+                frames=tmp.frames,
+                citations=tmp.citations,
+                q=tmp.q,
+                refusal=tmp.refusal,
+                citations_ref=tmp.citations_ref,
+                text=render_generation_text(tmp),
+                report_text=str(text),
+            )
+            citation_source = str(getattr(self.cfg, "citation_source", "llm")).strip().lower()
+            if citation_source == "llm":
+                return gen
+            return self._apply_score_override(gen, tokens)
             return Generation(
                 frames=frames,
                 citations=citations,
@@ -529,94 +810,4 @@ class Llama2PCG:
         if citation_source == "llm":
             # Keep sanitized citations from the model output (already filtered to valid token ids).
             return gen
-
-        # Deterministic citation repair (score-based override):
-        #
-        # In practice, even "strict JSON" prompts can lead to degenerate citations
-        # (e.g., the model copies the template `"citations":{"0":[0]}` for all
-        # inputs). Proof-carrying citations must remain mechanically grounded in
-        # the token set, so we override citations with a simple, auditable policy:
-        # cite top-k tokens by token.score with a *diversity* tie-break so we do not
-        # collapse to the lexicographically-first region when scores saturate.
-        if gen.frames:
-            def _center(tok: Token) -> Optional[tuple[float, float, float]]:
-                cell = parse_cell_id(str(tok.cell_id))
-                if cell is None:
-                    return None
-                n = 2 ** int(cell.level)
-                if n <= 0:
-                    return None
-                # Normalized center in (z,y,x) within [0,1].
-                return (
-                    (float(cell.iz) + 0.5) / float(n),
-                    (float(cell.iy) + 0.5) / float(n),
-                    (float(cell.ix) + 0.5) / float(n),
-                )
-
-            centers: Dict[int, Optional[tuple[float, float, float]]] = {int(t.token_id): _center(t) for t in tokens}
-            ranked = sorted(tokens, key=lambda t: (-float(t.score), -float(t.uncertainty), int(t.token_id)))
-
-            k = max(0, min(int(self.cfg.topk_citations), len(ranked)))
-            chosen: List[Token] = []
-            if k > 0:
-                chosen.append(ranked[0])
-            while len(chosen) < k:
-                best = None
-                best_key = None
-                for cand in ranked:
-                    if any(int(cand.token_id) == int(x.token_id) for x in chosen):
-                        continue
-                    c0 = centers.get(int(cand.token_id))
-                    if c0 is None:
-                        min_d2 = 0.0
-                    else:
-                        min_d2 = float("inf")
-                        for sel in chosen:
-                            c1 = centers.get(int(sel.token_id))
-                            if c1 is None:
-                                continue
-                            dz = float(c0[0]) - float(c1[0])
-                            dy = float(c0[1]) - float(c1[1])
-                            dx = float(c0[2]) - float(c1[2])
-                            d2 = dz * dz + dy * dy + dx * dx
-                            if d2 < min_d2:
-                                min_d2 = d2
-                        if min_d2 == float("inf"):
-                            min_d2 = 0.0
-                    key = (
-                        float(min_d2),  # diversity
-                        float(cand.score),
-                        float(cand.uncertainty),
-                        -int(cand.token_id),  # deterministic tiebreak (prefer smaller id)
-                    )
-                    if best_key is None or key > best_key:
-                        best = cand
-                        best_key = key
-                if best is None:
-                    break
-                chosen.append(best)
-
-            top_ids = [int(t.token_id) for t in chosen]
-            citations = {int(i): list(top_ids) for i in range(len(gen.frames))}
-            citations_ref = {int(i): [str(int(x)) for x in top_ids] for i in range(len(gen.frames))}
-            gen = Generation(
-                frames=gen.frames,
-                citations=citations,
-                q=gen.q,
-                refusal=gen.refusal,
-                citations_ref=citations_ref,
-                text="",
-                impression=str(getattr(gen, 'impression', '') or ''),
-                report_text=str(getattr(gen, 'report_text', '') or ''),
-            )
-            gen = Generation(
-                frames=gen.frames,
-                citations=citations,
-                q=gen.q,
-                refusal=gen.refusal,
-                citations_ref=citations_ref,
-                text=render_generation_text(gen),
-                impression=str(getattr(gen, 'impression', '') or ''),
-                report_text=str(getattr(gen, 'report_text', '') or ''),
-            )
-        return gen
+        return self._apply_score_override(gen, tokens)

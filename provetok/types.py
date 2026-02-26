@@ -23,6 +23,9 @@ class Token:
     # Optional mm-space geometry (only available when an affine is provided).
     bounds_mm: Optional[Tuple[float, float, float, float, float, float]] = None
     center_mm: Optional[Tuple[float, float, float]] = None
+    # Optional semantic/anatomy metadata for advanced verifier rules (R5/R6).
+    anatomy_label: Optional[str] = None
+    ctclip_similarity: Optional[float] = None
 
     def __post_init__(self) -> None:
         # Keep `ref` stable and non-empty by default.

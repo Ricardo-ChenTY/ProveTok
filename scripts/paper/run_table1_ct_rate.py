@@ -26,6 +26,7 @@ Outputs under --out-dir:
 """
 
 import argparse
+import csv
 import json
 import os
 import subprocess
@@ -37,10 +38,15 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+for _base in (ROOT / "ProveTok", ROOT):
+    if _base.exists() and str(_base) not in sys.path:
+        sys.path.insert(0, str(_base))
 
-from provetok.data.manifest_schema import load_manifest
+try:
+    from provetok.data.manifest_schema import load_manifest
+except Exception:
+    # Fallback for mixed-layout worktrees where package root is `ProveTok/*`.
+    from ProveTok.data.manifest_schema import load_manifest
 
 
 def _read_jsonl(path: Path) -> Iterable[Dict[str, Any]]:
@@ -146,6 +152,139 @@ def _run(cmd: List[str], *, env: Optional[Dict[str, str]] = None) -> None:
     subprocess.run(cmd, check=True, env=env)
 
 
+def _to_float(v: Any) -> Optional[float]:
+    try:
+        x = float(v)
+    except Exception:
+        return None
+    if x != x:  # NaN
+        return None
+    return float(x)
+
+
+def _fmt_md(v: Any, *, digits: int = 4) -> str:
+    x = _to_float(v)
+    if x is None:
+        s = str(v) if v is not None else ""
+        return s.replace("\n", " ").strip()
+    return f"{x:.{int(digits)}f}"
+
+
+def _write_csv(path: Path, header: Sequence[str], rows: Sequence[Sequence[Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(list(header))
+        for r in rows:
+            w.writerow(list(r))
+
+
+def _write_md_table(path: Path, header: Sequence[str], rows: Sequence[Sequence[Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines: List[str] = []
+    lines.append("| " + " | ".join(str(h) for h in header) + " |")
+    lines.append("| " + " | ".join(["---"] * len(header)) + " |")
+    for r in rows:
+        lines.append("| " + " | ".join(_fmt_md(x) for x in r) + " |")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _export_paper_tables(
+    *,
+    paper_metrics_json: Path,
+    out_dir: Path,
+    summary_metrics: Sequence[str],
+) -> Dict[str, str]:
+    data = json.loads(paper_metrics_json.read_text(encoding="utf-8"))
+    methods = data.get("methods", {}) if isinstance(data, dict) else {}
+    if not isinstance(methods, dict):
+        methods = {}
+
+    metrics: List[str] = []
+    for m in summary_metrics:
+        mm = str(m).strip()
+        if mm and mm not in metrics:
+            metrics.append(mm)
+
+    summary_header: List[str] = ["method", "n"]
+    for m in metrics:
+        summary_header.extend([f"{m}_mean", f"{m}_ci_low", f"{m}_ci_high"])
+
+    summary_rows: List[List[Any]] = []
+    for method in sorted(methods.keys()):
+        rec = methods.get(method, {}) if isinstance(methods.get(method), dict) else {}
+        summary = rec.get("summary", {}) if isinstance(rec.get("summary"), dict) else {}
+        summary_ci = rec.get("summary_ci", {}) if isinstance(rec.get("summary_ci"), dict) else {}
+        row: List[Any] = [str(method), int(summary.get("n", 0) or 0)]
+        for m in metrics:
+            ci = summary_ci.get(m, {}) if isinstance(summary_ci.get(m), dict) else {}
+            mean = ci.get("mean", summary.get(m, ""))
+            ci_low = ci.get("ci_low", "")
+            ci_high = ci.get("ci_high", "")
+            row.extend([mean, ci_low, ci_high])
+        summary_rows.append(row)
+
+    summary_csv = out_dir / "table_methods_summary.csv"
+    summary_md = out_dir / "table_methods_summary.md"
+    _write_csv(summary_csv, summary_header, summary_rows)
+    _write_md_table(summary_md, summary_header, summary_rows)
+
+    comp = data.get("comparisons", {}) if isinstance(data, dict) else {}
+    comp_methods = comp.get("methods", {}) if isinstance(comp, dict) else {}
+    if not isinstance(comp_methods, dict):
+        comp_methods = {}
+
+    comp_header = [
+        "baseline_method",
+        "method",
+        "metric",
+        "n",
+        "mean_diff",
+        "ci_low",
+        "ci_high",
+        "p_bootstrap",
+        "p_wilcoxon",
+        "p_holm",
+    ]
+    baseline_method = str(comp.get("baseline_method", "") if isinstance(comp, dict) else "")
+    comp_rows: List[List[Any]] = []
+    for method in sorted(comp_methods.keys()):
+        mr = comp_methods.get(method, {})
+        if not isinstance(mr, dict):
+            continue
+        for metric in sorted(mr.keys()):
+            rr = mr.get(metric, {})
+            if not isinstance(rr, dict):
+                continue
+            p_w = rr.get("wilcoxon", {}) if isinstance(rr.get("wilcoxon"), dict) else {}
+            comp_rows.append(
+                [
+                    baseline_method,
+                    str(method),
+                    str(metric),
+                    int(rr.get("n", 0) or 0),
+                    rr.get("mean_diff", ""),
+                    rr.get("ci_low", ""),
+                    rr.get("ci_high", ""),
+                    rr.get("p_bootstrap", ""),
+                    p_w.get("p_value", ""),
+                    rr.get("p_holm", ""),
+                ]
+            )
+
+    comp_csv = out_dir / "table_vs_baseline.csv"
+    comp_md = out_dir / "table_vs_baseline.md"
+    _write_csv(comp_csv, comp_header, comp_rows)
+    _write_md_table(comp_md, comp_header, comp_rows)
+
+    return {
+        "summary_csv": str(summary_csv),
+        "summary_md": str(summary_md),
+        "vs_baseline_csv": str(comp_csv),
+        "vs_baseline_md": str(comp_md),
+    }
+
+
 def _export_proof_extra(eval_json: Path, *, out_jsonl: Path, include: Optional[Sequence[str]] = None) -> None:
     rep = json.loads(eval_json.read_text(encoding="utf-8"))
     per = rep.get("per_sample") or []
@@ -237,7 +376,13 @@ def main() -> None:
 
     # Optional proof metrics for external methods
     ap.add_argument("--run-proof-external", action="store_true", help="Run eval_external_predictions on external methods and export proof extra_metrics_jsonl")
-    ap.add_argument("--resize-shape", type=int, nargs=3, default=[64, 64, 64])
+    ap.add_argument(
+        "--resize-shape",
+        type=int,
+        nargs=3,
+        default=[128, 128, 128],
+        help="Resize (D,H,W) used when running proof metrics for external methods (R1 primary: 128^3).",
+    )
     ap.add_argument("--tokenizer", type=str, default="fixed_grid", choices=["fixed_grid", "bet_alg"])
     ap.add_argument("--budget-tokens", type=int, default=256)
     ap.add_argument("--emb-dim", type=int, default=32)
@@ -249,6 +394,28 @@ def main() -> None:
     ap.add_argument("--baseline-method", type=str, default="", help="Baseline method name for paired comparisons")
     ap.add_argument("--n-bootstrap", type=int, default=10_000)
     ap.add_argument("--holm-family", type=str, default="all", choices=["all", "per_metric"])
+    ap.add_argument(
+        "--summary-metrics",
+        type=str,
+        nargs="*",
+        default=[
+            "finding_recall",
+            "abstention_rate",
+            "finding_f1",
+            "bleu",
+            "rougeL",
+            "radgraph_f1",
+            "chexbert_f1",
+            "ratescore",
+            "weighted_issue",
+        ],
+        help="Metrics to export in compact summary tables.",
+    )
+    ap.add_argument(
+        "--no-export-summary-tables",
+        action="store_true",
+        help="Skip exporting compact CSV/Markdown tables from paper_metrics.json.",
+    )
 
     # compute_paper_metrics args (optional heavy)
     ap.add_argument("--radgraph-model-type", type=str, default="")
@@ -479,7 +646,25 @@ def main() -> None:
 
     _run(cmd)
 
-    print(json.dumps({"out_dir": str(out_dir), "pairs_all": str(pairs_all_path), "paper_metrics": str(paper_out)}, indent=2))
+    exported_tables: Dict[str, str] = {}
+    if (not bool(args.no_export_summary_tables)) and paper_out.exists():
+        exported_tables = _export_paper_tables(
+            paper_metrics_json=paper_out,
+            out_dir=out_dir,
+            summary_metrics=[str(x) for x in (args.summary_metrics or [])],
+        )
+
+    print(
+        json.dumps(
+            {
+                "out_dir": str(out_dir),
+                "pairs_all": str(pairs_all_path),
+                "paper_metrics": str(paper_out),
+                "tables": exported_tables,
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

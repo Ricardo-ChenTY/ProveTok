@@ -35,7 +35,7 @@ def main() -> None:
     ap.add_argument("--quantization", type=str, default="fp16", choices=["fp16", "8bit"])
     ap.add_argument("--max-new-tokens", type=int, default=220)
     ap.add_argument("--max-tokens-in-prompt", type=int, default=16)
-    ap.add_argument("--contract-mode", type=str, default="schema_only", choices=["free_form", "schema_only", "schema_citations", "full"])
+    ap.add_argument("--contract-mode", type=str, default="schema_only", choices=["free_form", "schema_only", "schema_citations", "full", "inline_citation"])
     ap.add_argument("--max-frames", type=int, default=1)
 
     ap.add_argument("--budget-tokens", type=int, default=64)

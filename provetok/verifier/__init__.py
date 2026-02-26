@@ -48,6 +48,8 @@ from .rules import (
     I1_AnatomicalMismatch,
     I1_ConflictingFindings,
     I1_PolarityConfidence,
+    R5_AnatomyMismatch,
+    R6_SemanticRelevance,
     # M1 规则
     M1_MissingLaterality,
     M1_MissingFinding,
@@ -57,6 +59,7 @@ from .rules import (
     COMPATIBLE_LOCATIONS,
     FINDING_SEVERITY_MAP,
     SIZE_THRESHOLDS,
+    FINDING_ALLOWED_ANATOMY,
 )
 
 from .nli import (
@@ -107,6 +110,8 @@ __all__ = [
     "I1_AnatomicalMismatch",
     "I1_ConflictingFindings",
     "I1_PolarityConfidence",
+    "R5_AnatomyMismatch",
+    "R6_SemanticRelevance",
     "M1_MissingLaterality",
     "M1_MissingFinding",
     "M1_LowConfidenceNoExplanation",
@@ -115,6 +120,7 @@ __all__ = [
     "COMPATIBLE_LOCATIONS",
     "FINDING_SEVERITY_MAP",
     "SIZE_THRESHOLDS",
+    "FINDING_ALLOWED_ANATOMY",
     # NLI
     "NLIResult",
     "frame_to_claim",

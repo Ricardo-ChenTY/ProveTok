@@ -5,22 +5,34 @@ import argparse
 import json
 import math
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+for _base in (ROOT / "ProveTok", ROOT):
+    if _base.exists() and str(_base) not in sys.path:
+        sys.path.insert(0, str(_base))
 
-from provetok.eval.metrics_text import MissingTextMetricDependency, TextMetricConfig, compute_text_metrics
-from provetok.eval.stats import (
-    bootstrap_mean_ci,
-    holm_bonferroni,
-    paired_bootstrap_mean_diff,
-    paired_wilcoxon_signed_rank,
-)
+try:
+    from provetok.eval.metrics_text import MissingTextMetricDependency, TextMetricConfig, compute_text_metrics
+    from provetok.eval.stats import (
+        bootstrap_mean_ci,
+        holm_bonferroni,
+        paired_bootstrap_mean_diff,
+        paired_wilcoxon_signed_rank,
+    )
+except Exception:
+    # Fallback for mixed-layout worktrees where package root is `ProveTok/*`.
+    from ProveTok.eval.metrics_text import MissingTextMetricDependency, TextMetricConfig, compute_text_metrics
+    from ProveTok.eval.stats import (
+        bootstrap_mean_ci,
+        holm_bonferroni,
+        paired_bootstrap_mean_diff,
+        paired_wilcoxon_signed_rank,
+    )
 
 
 def _read_jsonl(path: Path) -> Iterable[Dict[str, Any]]:
@@ -157,6 +169,57 @@ def _aligned_pairs(
     return a, b
 
 
+def _is_positive_frame_like(frame: Any) -> bool:
+    pol = str(getattr(frame, "polarity", "")).strip().lower()
+    if pol not in ("present", "positive"):
+        return False
+    finding = str(getattr(frame, "finding", "")).strip().lower()
+    if finding in ("", "normal"):
+        return False
+    return True
+
+
+def _positive_finding_counter(frames: Sequence[Any]) -> Counter[str]:
+    c: Counter[str] = Counter()
+    for fr in frames:
+        if not _is_positive_frame_like(fr):
+            continue
+        finding = str(getattr(fr, "finding", "")).strip().lower()
+        if finding:
+            c[finding] += 1
+    return c
+
+
+def _compute_finding_proxy_metrics(pred_text: str, ref_text: str, *, extractor: Any) -> Dict[str, float]:
+    """Compute lightweight R1 proxies from extracted finding frames.
+
+    This is a text-only proxy metric computed from report strings:
+    - finding_precision / finding_recall / finding_f1
+    - abstention_rate := N_pred_pos / N_gold_pos  (proposal-defined ratio)
+    """
+    pred_frames = extractor.extract_frames(str(pred_text or ""))
+    ref_frames = extractor.extract_frames(str(ref_text or ""))
+
+    pred = _positive_finding_counter(pred_frames)
+    ref = _positive_finding_counter(ref_frames)
+
+    pred_total = int(sum(pred.values()))
+    ref_total = int(sum(ref.values()))
+    tp = int(sum(min(int(pred[k]), int(ref[k])) for k in set(pred.keys()) | set(ref.keys())))
+
+    precision = float(tp / pred_total) if pred_total > 0 else (1.0 if ref_total == 0 else 0.0)
+    recall = float(tp / ref_total) if ref_total > 0 else 1.0
+    f1 = float(2.0 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+    abst = float(pred_total / ref_total) if ref_total > 0 else float("nan")
+
+    return {
+        "finding_precision": float(precision),
+        "finding_recall": float(recall),
+        "finding_f1": float(f1),
+        "abstention_rate": float(abst),
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=(
@@ -164,7 +227,8 @@ def main() -> None:
             "Designed to run on the output of: \n"
             "  python -m provetok.experiments.run_baselines --dump-text-pairs-jsonl <pairs.jsonl> ...\n\n"
             "Supports optional heavy metrics (CheXbert, RadGraph, RaTEScore) and merges\n"
-            "external metrics (e.g., GREEN/RadCliQ) via --extra-metrics-jsonl."
+            "external metrics (e.g., GREEN/RadCliQ) via --extra-metrics-jsonl.\n"
+            "Also reports lightweight finding-level proxies (finding_precision/recall/f1, abstention_rate)."
         )
     )
     ap.add_argument("--text-pairs-jsonl", type=str, required=True)
@@ -273,6 +337,19 @@ def main() -> None:
             print(f"[warn] ratescore disabled: {type(e).__name__}: {e}")
             ratescore_scorer = None
 
+    finding_extractor = None
+    finding_proxy_warned = False
+    try:
+        try:
+            from provetok.data.frame_extractor import FrameExtractor
+        except Exception:
+            from ProveTok.data.frame_extractor import FrameExtractor
+
+        finding_extractor = FrameExtractor()
+    except Exception as e:
+        print(f"[warn] finding proxy metrics disabled: {type(e).__name__}: {e}")
+        finding_extractor = None
+
     # Group by method
     by_method: Dict[str, List[PairRow]] = {}
     for r in rows:
@@ -317,6 +394,15 @@ def main() -> None:
             for k, v in tm.items():
                 if _is_num(v):
                     row_out[str(k)] = float(v)
+
+            if finding_extractor is not None:
+                try:
+                    fpm = _compute_finding_proxy_metrics(r.pred_text, r.ref_text, extractor=finding_extractor)
+                    row_out.update({k: float(v) for k, v in fpm.items()})
+                except Exception as e:
+                    if not finding_proxy_warned:
+                        print(f"[warn] finding proxy metrics failed (continuing): {type(e).__name__}: {e}")
+                        finding_proxy_warned = True
 
             # Merge external per-sample metrics
             ext = extra.get((r.sample_id, r.method))

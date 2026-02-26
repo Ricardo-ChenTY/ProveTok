@@ -117,6 +117,7 @@ class _CachedTokenFields:
     center_voxel: Tuple[float, float, float]
     bounds_mm: Optional[Tuple[float, float, float, float, float, float]] = None
     center_mm: Optional[Tuple[float, float, float]] = None
+    anatomy_label: Optional[str] = None
 
 
 class TokenEncoder:
@@ -137,12 +138,16 @@ class TokenEncoder:
         seed: int = 0,
         encoder: Optional[Any] = None,
         affine_zyx: Optional[np.ndarray] = None,
+        anatomy_labels: Optional[np.ndarray] = None,
+        anatomy_label_map: Optional[Dict[int, str]] = None,
     ):
         self.volume = volume
         self.emb_dim = int(emb_dim)
         self.seed = int(seed)
         self.encoder = encoder
         self.affine_zyx = np.asarray(affine_zyx, dtype=np.float64) if affine_zyx is not None else None
+        self.anatomy_labels = np.asarray(anatomy_labels) if anatomy_labels is not None else None
+        self.anatomy_label_map = {int(k): str(v) for k, v in (anatomy_label_map or {}).items()}
 
         self._cache: Dict[str, _CachedTokenFields] = {}
 
@@ -222,8 +227,18 @@ class TokenEncoder:
 
         bounds_mm: Optional[Tuple[float, float, float, float, float, float]] = None
         center_mm: Optional[Tuple[float, float, float]] = None
+        anatomy_label: Optional[str] = None
         if self.affine_zyx is not None:
             bounds_mm, center_mm = _cell_bounds_mm(bounds_int, center, self.affine_zyx)
+        if self.anatomy_labels is not None and self.anatomy_labels.ndim == 3:
+            try:
+                cz = int(max(0, min(int(round(center[0])), int(self.anatomy_labels.shape[0]) - 1)))
+                cy = int(max(0, min(int(round(center[1])), int(self.anatomy_labels.shape[1]) - 1)))
+                cx = int(max(0, min(int(round(center[2])), int(self.anatomy_labels.shape[2]) - 1)))
+                label_id = int(self.anatomy_labels[cz, cy, cx])
+                anatomy_label = self.anatomy_label_map.get(label_id, str(label_id))
+            except Exception:
+                anatomy_label = None
 
         patch = self.volume[bounds[0], bounds[1], bounds[2]]
         if patch.numel() > 0:
@@ -256,6 +271,7 @@ class TokenEncoder:
                 center_voxel=center,
                 bounds_mm=bounds_mm,
                 center_mm=center_mm,
+                anatomy_label=anatomy_label,
             )
 
         # Encoder-backed embedding: pool region from cached feature map.
@@ -282,6 +298,7 @@ class TokenEncoder:
             center_voxel=center,
             bounds_mm=bounds_mm,
             center_mm=center_mm,
+            anatomy_label=anatomy_label,
         )
 
     def encode(
@@ -333,6 +350,7 @@ class TokenEncoder:
                     center_voxel=tuple(float(x) for x in f.center_voxel),
                     bounds_mm=f.bounds_mm,
                     center_mm=f.center_mm,
+                    anatomy_label=f.anatomy_label,
                 )
             )
         return tokens
@@ -346,6 +364,8 @@ def encode_tokens(
     *,
     encoder: Optional[Any] = None,
     affine_zyx: Optional[np.ndarray] = None,
+    anatomy_labels: Optional[np.ndarray] = None,
+    anatomy_label_map: Optional[Dict[int, str]] = None,
     token_score_fn: Optional[Any] = None,
     token_score_level_power: float = 0.0,
 ) -> List[Token]:
@@ -354,7 +374,15 @@ def encode_tokens(
     If `encoder` is provided, uses a cached encoder feature map; otherwise uses
     deterministic toy patch embedding.
     """
-    return TokenEncoder(volume=volume, emb_dim=emb_dim, seed=seed, encoder=encoder, affine_zyx=affine_zyx).encode(
+    return TokenEncoder(
+        volume=volume,
+        emb_dim=emb_dim,
+        seed=seed,
+        encoder=encoder,
+        affine_zyx=affine_zyx,
+        anatomy_labels=anatomy_labels,
+        anatomy_label_map=anatomy_label_map,
+    ).encode(
         cells,
         token_score_fn=token_score_fn,
         token_score_level_power=float(token_score_level_power),

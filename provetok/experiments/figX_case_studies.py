@@ -215,7 +215,7 @@ def main() -> None:
 
     ap.add_argument("--llama2-path", type=str, default="/data/models/Llama-2-7b-chat-hf")
     ap.add_argument("--llama2-quant", type=str, default="fp16", choices=["fp16", "8bit"])
-    ap.add_argument("--llama2-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full"])
+    ap.add_argument("--llama2-contract-mode", type=str, default="full", choices=["free_form", "schema_only", "schema_citations", "full", "inline_citation"])
     ap.add_argument("--llama2-citation-source", type=str, default="score_override", choices=["score_override", "llm"])
     ap.add_argument("--llama2-max-frames", type=int, default=1)
     ap.add_argument("--llama2-lora-adapter", type=str, default="", help="Optional LoRA/PEFT adapter path")

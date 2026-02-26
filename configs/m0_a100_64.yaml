@@ -1,0 +1,46 @@
+seed: 42
+device: auto
+run_name: m0_ct_rate_64
+
+data:
+  type: manifest
+  manifest_path: "./data/manifests/ct_rate_mini_manifest.jsonl"
+  num_samples: 40000
+  vol_shape: [64, 64, 64]
+  num_workers: 16
+
+model:
+  emb_dim: 32
+  cite_topk: 8
+  encoder_backend: "none"  # "none" | "simple_cnn3d" | "swin_unetr"
+  encoder_ckpt: ""
+  in_channels: 1
+  feature_size: 48
+  out_channels: 14
+
+verifier:
+  mode: "rules"     # "rules" | "pp_v1_1"
+  l_min: 2
+  enable_r5: false
+  enable_r6: false
+  r6_threshold: 0.3
+  semantic_rerank_on_violation: false
+  semantic_rerank_topk: 3
+  semantic_rerank_rule_ids: ["R5", "R6"]
+  despecify_on_remaining_issues: false
+  despecify_confidence_cap: 0.6
+
+bet:
+  budget_tokens: 128
+  steps: 5
+  max_depth: 4
+  epsilon: 0.01
+  verifier_refresh_period: 1
+
+train:
+  epochs: 50
+  batch_size: 16
+  lr: 2.0e-4
+  weight_decay: 0.01
+  log_every: 50
+  save_dir: checkpoints_a100

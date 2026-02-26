@@ -52,11 +52,13 @@ logs/
 !scripts/data/
 scripts/data/*
 !scripts/data/build_ct_rate_pseudomask_manifest.py
+!scripts/data/build_ct_rate_manifest.py
 !scripts/data/build_ct_rate_tsseg_effusion_manifest.py
 !scripts/data/build_rex_groundingct_manifest.py
 !scripts/data/make_radgenome_chestct_index.py
 !scripts/data/preprocess_manifest_rrg_dpo.py
 !scripts/data/validate_manifest.py
+!scripts/data/fill_manifest_fields.py
 
 # OS
 .DS_Store

@@ -128,6 +128,34 @@ def load_mask(path: str) -> Any:
     raise ValueError(f"Unsupported mask format: {p}")
 
 
+def load_label_volume(path: str) -> np.ndarray:
+    """Load an integer label volume in canonical (D,H,W)=(Z,Y,X) order.
+
+    Unlike `load_mask`, this preserves class ids (does not binarize).
+    """
+    p = Path(str(path))
+    if not p.exists():
+        raise FileNotFoundError(str(p))
+    suf = "".join(p.suffixes).lower()
+    if suf.endswith(".npy"):
+        arr = np.load(str(p))
+        return np.asarray(arr, dtype=np.int32)
+    if suf.endswith(".npz"):
+        z = np.load(str(p))
+        arr = z[z.files[0]]
+        return np.asarray(arr, dtype=np.int32)
+    if suf.endswith(".nii") or suf.endswith(".nii.gz"):
+        nib = _try_import_nibabel()
+        if nib is None:
+            raise RuntimeError("Loading NIfTI requires nibabel. Install via `pip install nibabel`.")
+        img = nib.load(str(p))
+        img = nib.as_closest_canonical(img)
+        arr = np.asarray(img.dataobj)
+        arr = _as_dhw(np.asarray(arr))
+        return np.asarray(arr, dtype=np.int32)
+    raise ValueError(f"Unsupported label format: {p}")
+
+
 def load_affine(path: str) -> Optional[np.ndarray]:
     """Load an affine matrix matching our (D,H,W) tensor indexing.
 

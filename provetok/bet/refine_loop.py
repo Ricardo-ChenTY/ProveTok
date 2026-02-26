@@ -10,11 +10,11 @@
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Callable, Optional
+from typing import List, Dict, Any, Callable, Optional, Sequence, Set, Tuple
 import torch
 
 from ..grid.cells import root_cell, split, Cell
-from ..types import Token, Generation, Issue
+from ..types import Token, Generation, Issue, Frame
 from .tokenize import TokenEncoder
 from .allocator import PickPrefer, pick_cell_to_split
 from .evidence_head import (
@@ -54,6 +54,157 @@ class RefineResult:
     stopped_reason: str = ""
 
 
+def _clone_generation_with_updates(
+    gen: Generation,
+    *,
+    frames: Optional[List[Frame]] = None,
+    citations: Optional[Dict[int, List[int]]] = None,
+    citations_ref: Optional[Dict[int, List[str]]] = None,
+) -> Generation:
+    return Generation(
+        frames=list(frames if frames is not None else list(gen.frames)),
+        citations={int(k): list(v) for k, v in (citations if citations is not None else dict(gen.citations)).items()},
+        q={int(k): float(v) for k, v in dict(gen.q).items()},
+        refusal={int(k): bool(v) for k, v in dict(gen.refusal).items()},
+        citations_ref={int(k): list(v) for k, v in (citations_ref if citations_ref is not None else dict(gen.citations_ref or {})).items()},
+        text=str(getattr(gen, "text", "") or ""),
+        impression=str(getattr(gen, "impression", "") or ""),
+        report_text=str(getattr(gen, "report_text", "") or ""),
+    )
+
+
+def _despecify_frame(frame: Frame, *, confidence_cap: float = 0.6) -> Frame:
+    return Frame(
+        finding=str(getattr(frame, "finding", "normal")),
+        polarity=str(getattr(frame, "polarity", "present")),
+        laterality="unspecified",
+        confidence=min(float(confidence_cap), float(getattr(frame, "confidence", 0.5))),
+        location=str(getattr(frame, "location", "unspecified")),
+        size_bin=str(getattr(frame, "size_bin", "unspecified")),
+        severity=str(getattr(frame, "severity", "unspecified")),
+        uncertain=True,
+    )
+
+
+def _apply_semantic_citation_rerank(
+    gen: Generation,
+    *,
+    tokens: List[Token],
+    issues: List[Issue],
+    top_k: int,
+    rule_ids: Set[str],
+) -> Tuple[Generation, bool]:
+    if not tokens or not gen.frames or not issues or not rule_ids:
+        return gen, False
+
+    token_ref_map = {int(t.token_id): str(getattr(t, "ref", t.cell_id)) for t in tokens}
+    issues_by_frame: Dict[int, Set[str]] = {}
+    for iss in issues:
+        rid = str(getattr(iss, "rule_id", "") or "").strip()
+        if rid not in rule_ids:
+            continue
+        idx = int(getattr(iss, "frame_idx", -1))
+        if idx < 0:
+            continue
+        issues_by_frame.setdefault(idx, set()).add(rid)
+
+    if not issues_by_frame:
+        return gen, False
+
+    try:
+        from ..verifier.rules import FINDING_ALLOWED_ANATOMY
+    except Exception:
+        FINDING_ALLOWED_ANATOMY = {}
+
+    new_citations = {int(k): list(v) for k, v in dict(gen.citations).items()}
+    new_citations_ref = {int(k): list(v) for k, v in dict(gen.citations_ref or {}).items()}
+    changed = False
+    keep = max(1, int(top_k))
+
+    for frame_idx, frame in enumerate(gen.frames):
+        frame_rules = issues_by_frame.get(int(frame_idx))
+        if not frame_rules:
+            continue
+        if bool(gen.refusal.get(int(frame_idx), False)):
+            continue
+        if str(getattr(frame, "polarity", "")).lower() not in ("present", "positive"):
+            continue
+
+        allowed: Set[str] = set()
+        if "R5" in frame_rules:
+            finding = str(getattr(frame, "finding", "")).strip().lower()
+            allowed = {str(x).strip().lower() for x in FINDING_ALLOWED_ANATOMY.get(finding, set())}
+
+        scored: List[Tuple[float, int]] = []
+        for tok in tokens:
+            anatomy_label = str(getattr(tok, "anatomy_label", "") or "").strip().lower()
+            sem = float(tok.ctclip_similarity) if getattr(tok, "ctclip_similarity", None) is not None else float(tok.score)
+            rank_score = float(sem) + 0.2 * float(tok.score) + 0.02 * float(tok.level)
+            if allowed:
+                if anatomy_label and anatomy_label in allowed:
+                    rank_score += 1.0
+                else:
+                    rank_score -= 1.0
+            scored.append((rank_score, int(tok.token_id)))
+
+        scored.sort(key=lambda x: (-float(x[0]), int(x[1])))
+        selected: List[int] = []
+        seen: Set[int] = set()
+        for _, tid in scored:
+            if tid in seen:
+                continue
+            seen.add(int(tid))
+            selected.append(int(tid))
+            if len(selected) >= keep:
+                break
+
+        if not selected:
+            continue
+
+        old = list(new_citations.get(int(frame_idx), []))
+        if old == selected:
+            continue
+        new_citations[int(frame_idx)] = selected
+        new_citations_ref[int(frame_idx)] = [token_ref_map.get(int(tid), str(tid)) for tid in selected]
+        changed = True
+
+    if not changed:
+        return gen, False
+    return _clone_generation_with_updates(gen, citations=new_citations, citations_ref=new_citations_ref), True
+
+
+def _apply_despecify_fallback(
+    gen: Generation,
+    *,
+    issues: List[Issue],
+    confidence_cap: float,
+) -> Tuple[Generation, bool]:
+    if not gen.frames or not issues:
+        return gen, False
+
+    issue_frames = {int(getattr(iss, "frame_idx", -1)) for iss in issues if int(getattr(iss, "frame_idx", -1)) >= 0}
+    if not issue_frames:
+        return gen, False
+
+    frames = list(gen.frames)
+    changed = False
+    for idx, fr in enumerate(frames):
+        if int(idx) not in issue_frames:
+            continue
+        if bool(gen.refusal.get(int(idx), False)):
+            continue
+        if str(getattr(fr, "polarity", "")).lower() not in ("present", "positive"):
+            continue
+        newer = _despecify_frame(fr, confidence_cap=float(confidence_cap))
+        if newer != fr:
+            frames[idx] = newer
+            changed = True
+
+    if not changed:
+        return gen, False
+    return _clone_generation_with_updates(gen, frames=frames), True
+
+
 def run_refine_loop(
     volume: torch.Tensor,
     budget_tokens: int,
@@ -64,6 +215,8 @@ def run_refine_loop(
     seed: int = 0,
     encoder: Optional[Any] = None,
     affine_zyx: Optional[Any] = None,
+    anatomy_labels: Optional[Any] = None,
+    anatomy_label_map: Optional[Dict[int, str]] = None,
     require_full_budget: bool = False,
     # Evidence Head 相关参数
     evidence_head: Optional[EvidenceHead] = None,
@@ -82,6 +235,12 @@ def run_refine_loop(
     token_score_max_beta: float = 1.0,
     score_to_uncertainty: bool = False,
     score_level_power: float = 0.0,
+    # Optional Stage-4 semantic close-loop hooks (default off; non-breaking).
+    semantic_rerank_on_violation: bool = False,
+    semantic_rerank_topk: int = 3,
+    semantic_rerank_rule_ids: Optional[Sequence[str]] = None,
+    despecify_on_remaining_issues: bool = False,
+    despecify_confidence_cap: float = 0.6,
 ) -> RefineResult:
     """运行 BET refine loop
 
@@ -117,6 +276,11 @@ def run_refine_loop(
     # Default to a consistent schedule in that case.
     if pcg_refresh_period > 1 and verifier_refresh_period == 1:
         verifier_refresh_period = pcg_refresh_period
+    semantic_rules = {
+        str(x).strip()
+        for x in (semantic_rerank_rule_ids if semantic_rerank_rule_ids is not None else ("R5", "R6"))
+        if str(x).strip()
+    }
     cells: List[Cell] = [root_cell()]
     if init_level > 0:
         n = 2 ** init_level
@@ -142,7 +306,15 @@ def run_refine_loop(
             lambda_uncertainty=lambda_uncertainty,
         )
 
-    token_encoder = TokenEncoder(volume=volume, emb_dim=emb_dim, seed=seed, encoder=encoder, affine_zyx=affine_zyx)
+    token_encoder = TokenEncoder(
+        volume=volume,
+        emb_dim=emb_dim,
+        seed=seed,
+        encoder=encoder,
+        affine_zyx=affine_zyx,
+        anatomy_labels=anatomy_labels,
+        anatomy_label_map=anatomy_label_map,
+    )
 
     def _apply_token_scores(tokens_in: List[Token]) -> List[Token]:
         if token_score_fn is None or not tokens_in:
@@ -190,6 +362,8 @@ def run_refine_loop(
                     center_voxel=tuple(getattr(t, "center_voxel", (0.0, 0.0, 0.0))),
                     bounds_mm=getattr(t, "bounds_mm", None),
                     center_mm=getattr(t, "center_mm", None),
+                    anatomy_label=getattr(t, "anatomy_label", None),
+                    ctclip_similarity=getattr(t, "ctclip_similarity", None),
                 )
             )
         return out
@@ -310,6 +484,28 @@ def run_refine_loop(
     tokens = _apply_token_scores(tokens)
     gen = generator_fn(tokens)
     issues = verifier_fn(gen, tokens)
+
+    if bool(semantic_rerank_on_violation) and semantic_rules:
+        gen_reranked, reranked = _apply_semantic_citation_rerank(
+            gen,
+            tokens=tokens,
+            issues=issues,
+            top_k=int(semantic_rerank_topk),
+            rule_ids=semantic_rules,
+        )
+        if reranked:
+            gen = gen_reranked
+            issues = verifier_fn(gen, tokens)
+
+    if bool(despecify_on_remaining_issues) and issues:
+        gen_despecified, changed = _apply_despecify_fallback(
+            gen,
+            issues=issues,
+            confidence_cap=float(despecify_confidence_cap),
+        )
+        if changed:
+            gen = gen_despecified
+            issues = verifier_fn(gen, tokens)
 
     return RefineResult(
         tokens=tokens,

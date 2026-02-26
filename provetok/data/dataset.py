@@ -11,8 +11,14 @@ from torch.utils.data import DataLoader, Dataset
 
 from ..types import Frame
 from .frame_extractor import FrameExtractor
-from .io import load_mask, load_volume, load_volume_and_affine
-from .manifest_schema import ManifestRecord, get_record_mask_path, load_manifest
+from .io import load_label_volume, load_mask, load_volume, load_volume_and_affine
+from .manifest_schema import (
+    ManifestRecord,
+    get_record_anatomy_label_map,
+    get_record_anatomy_path,
+    get_record_mask_path,
+    load_manifest,
+)
 
 
 def _resize_volume(vol: torch.Tensor, *, resize_shape: Tuple[int, int, int]) -> torch.Tensor:
@@ -38,6 +44,16 @@ def _resize_mask(mask: np.ndarray, *, resize_shape: Tuple[int, int, int]) -> np.
     tgt = tuple(int(x) for x in resize_shape)
     y = F.interpolate(x, size=tgt, mode="nearest")
     return (y[0, 0].numpy() > 0.5)
+
+
+def _resize_label(label: np.ndarray, *, resize_shape: Tuple[int, int, int]) -> np.ndarray:
+    if not isinstance(label, np.ndarray) or label.ndim != 3:
+        return label
+    if tuple(int(x) for x in label.shape) == tuple(int(x) for x in resize_shape):
+        return np.asarray(label, dtype=np.int32)
+    x = torch.from_numpy(np.asarray(label, dtype=np.float32)).unsqueeze(0).unsqueeze(0)  # (1,1,D,H,W)
+    y = F.interpolate(x, size=tuple(int(x) for x in resize_shape), mode="nearest")
+    return np.asarray(y[0, 0].numpy(), dtype=np.int32)
 
 
 def _synthetic_volume_and_masks(*, vol_shape: Tuple[int, int, int], n_lesions: int, seed: int) -> Tuple[torch.Tensor, Dict[int, np.ndarray]]:
@@ -162,11 +178,25 @@ class ManifestDataset(Dataset):
             except Exception:
                 lesion_masks = {}
 
+        anatomy_labels = None
+        anatomy_label_map: Dict[int, str] = {}
+        anatomy_path = get_record_anatomy_path(r)
+        if anatomy_path:
+            try:
+                anatomy_labels = load_label_volume(str(anatomy_path))
+                anatomy_labels = _resize_label(anatomy_labels, resize_shape=self.resize_shape)
+                anatomy_label_map = get_record_anatomy_label_map(r)
+            except Exception:
+                anatomy_labels = None
+                anatomy_label_map = {}
+
         return {
             "sample_id": str(r.scan_hash),
             "volume": vol,
             "frames": frames,
             "lesion_masks": lesion_masks,
+            "anatomy_labels": anatomy_labels,
+            "anatomy_label_map": anatomy_label_map,
             "report_text": report_text,
             "record": r,
             "affine_zyx": affine_zyx,
@@ -235,6 +265,8 @@ def _collate(samples: List[Dict[str, Any]]) -> Dict[str, Any]:
     frames = [s.get("frames", []) for s in samples]
     sample_id = [s.get("sample_id", "") for s in samples]
     lesion_masks = [s.get("lesion_masks", {}) for s in samples]
+    anatomy_labels = [s.get("anatomy_labels", None) for s in samples]
+    anatomy_label_maps = [s.get("anatomy_label_map", {}) for s in samples]
     report_text = [s.get("report_text", "") for s in samples]
     affines = [s.get("affine_zyx", None) for s in samples]
     out: Dict[str, Any] = {
@@ -242,6 +274,8 @@ def _collate(samples: List[Dict[str, Any]]) -> Dict[str, Any]:
         "frames": frames,
         "sample_id": sample_id,
         "lesion_masks": lesion_masks,
+        "anatomy_labels": anatomy_labels,
+        "anatomy_label_map": anatomy_label_maps,
         "report_text": report_text,
     }
     # Keep raw records when present (manifest datasets).

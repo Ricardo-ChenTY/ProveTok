@@ -63,3 +63,18 @@ def test_fig4_agent_pareto_multiseed_help() -> None:
 def test_preprocess_manifest_rrg_dpo_help() -> None:
     out = _run_help_script("scripts/data/preprocess_manifest_rrg_dpo.py")
     assert "rrg" in out
+
+
+def test_build_ct_rate_manifest_help() -> None:
+    out = _run_help_script("scripts/data/build_ct_rate_manifest.py")
+    assert "ct-rate" in out or "manifest" in out
+
+
+def test_validate_manifest_help() -> None:
+    out = _run_help_script("scripts/data/validate_manifest.py")
+    assert "manifest" in out
+
+
+def test_fill_manifest_fields_help() -> None:
+    out = _run_help_script("scripts/data/fill_manifest_fields.py")
+    assert "manifest" in out and "split" in out

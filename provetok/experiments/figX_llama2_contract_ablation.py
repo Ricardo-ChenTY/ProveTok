@@ -134,8 +134,8 @@ def main() -> None:
         "--contract-modes",
         type=str,
         nargs="+",
-        default=["free_form", "schema_only", "schema_citations", "full"],
-        choices=["free_form", "schema_only", "schema_citations", "full"],
+        default=["free_form", "schema_only", "schema_citations", "full", "inline_citation"],
+        choices=["free_form", "schema_only", "schema_citations", "full", "inline_citation"],
     )
     ap.add_argument("--citation-source", type=str, default="score_override", choices=["score_override", "llm"])
     ap.add_argument("--max-frames", type=int, default=5, help="Max frames in LLaMA2 contract modes.")

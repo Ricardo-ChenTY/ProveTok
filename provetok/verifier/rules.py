@@ -105,6 +105,70 @@ SIZE_THRESHOLDS = {
     "massive": (30, float('inf')),
 }
 
+# R5 anatomy allow-list (proposal-aligned, conservative coarse mapping).
+FINDING_ALLOWED_ANATOMY = {
+    "nodule": {
+        "left_lung_upper",
+        "left_lung_lower",
+        "right_lung_upper",
+        "right_lung_middle",
+        "right_lung_lower",
+        "left_lung",
+        "right_lung",
+        "lung",
+    },
+    "mass": {
+        "left_lung_upper",
+        "left_lung_lower",
+        "right_lung_upper",
+        "right_lung_middle",
+        "right_lung_lower",
+        "left_lung",
+        "right_lung",
+        "lung",
+    },
+    "opacity": {
+        "left_lung",
+        "right_lung",
+        "lung",
+        "pleura",
+    },
+    "consolidation": {
+        "left_lung",
+        "right_lung",
+        "lung",
+    },
+    "atelectasis": {
+        "left_lung",
+        "right_lung",
+        "lung",
+    },
+    "effusion": {
+        "pleura",
+        "left_pleural",
+        "right_pleural",
+        "pericardium",
+    },
+    "pneumothorax": {
+        "pleura",
+        "left_pleural",
+        "right_pleural",
+        "lung",
+    },
+    "cardiomegaly": {
+        "heart",
+        "cardiac",
+        "mediastinum",
+    },
+    "fracture": {
+        "rib",
+        "spine",
+        "bone",
+        "sternum",
+        "clavicle",
+    },
+}
+
 
 # ============================================================
 # 规则基类
@@ -760,6 +824,107 @@ class I1_TextRoundTrip(VerificationRule):
         return None
 
 
+class R5_AnatomyMismatch(VerificationRule):
+    """R5: cited token anatomy should match finding-expected anatomy."""
+
+    def __init__(self):
+        super().__init__("R5", "I1_inconsistency", severity=2)
+
+    def check(self, frame_idx, frame, generation, tokens, token_map):
+        if generation.refusal.get(frame_idx, False):
+            return None
+        if frame.polarity not in ("present", "positive"):
+            return None
+
+        finding = str(getattr(frame, "finding", "")).lower().strip()
+        allowed = {str(x).lower().strip() for x in FINDING_ALLOWED_ANATOMY.get(finding, set())}
+        if not allowed:
+            return None
+
+        citations = generation.citations.get(frame_idx, [])
+        if not citations:
+            return None
+
+        cited_labels: List[str] = []
+        for tid in citations:
+            tok = token_map.get(tid)
+            if tok is None:
+                continue
+            lab = str(getattr(tok, "anatomy_label", "") or "").strip().lower()
+            if lab:
+                cited_labels.append(lab)
+
+        # No anatomy metadata available -> skip (non-breaking default behavior).
+        if not cited_labels:
+            return None
+
+        if any(lbl in allowed for lbl in cited_labels):
+            return None
+
+        return self._make_issue(
+            frame_idx=frame_idx,
+            message=f"R5 anatomy mismatch: finding={finding}, cited anatomy labels out of allowed set.",
+            evidence_trace=build_evidence_trace(
+                citations,
+                token_map,
+                rule_inputs={"allowed_anatomy": sorted(list(allowed))},
+                rule_outputs={"cited_anatomy": cited_labels},
+            ),
+            severity=2,
+        )
+
+
+class R6_SemanticRelevance(VerificationRule):
+    """R6: semantic relevance in aligned V-L space (hook-based, optional scorer)."""
+
+    def __init__(
+        self,
+        *,
+        min_similarity: float = 0.3,
+        scorer: Optional[Callable[[Frame, List[Token]], Optional[float]]] = None,
+    ):
+        super().__init__("R6", "I1_inconsistency", severity=2)
+        self.min_similarity = float(min_similarity)
+        self.scorer = scorer
+
+    def check(self, frame_idx, frame, generation, tokens, token_map):
+        if generation.refusal.get(frame_idx, False):
+            return None
+        if frame.polarity not in ("present", "positive"):
+            return None
+        if self.scorer is None:
+            return None
+
+        citations = generation.citations.get(frame_idx, [])
+        if not citations:
+            return None
+        cited_tokens = [token_map[tid] for tid in citations if tid in token_map]
+        if not cited_tokens:
+            return None
+
+        try:
+            sim = self.scorer(frame, cited_tokens)
+        except Exception:
+            return None
+        if sim is None:
+            return None
+        sim_v = float(sim)
+        if sim_v >= float(self.min_similarity):
+            return None
+
+        return self._make_issue(
+            frame_idx=frame_idx,
+            message=f"R6 semantic relevance below threshold ({sim_v:.4f} < {self.min_similarity:.4f}).",
+            evidence_trace=build_evidence_trace(
+                citations,
+                token_map,
+                rule_inputs={"min_similarity": float(self.min_similarity)},
+                rule_outputs={"similarity": sim_v},
+            ),
+            severity=2,
+        )
+
+
 # ============================================================
 # M1: Missing Slot 规则
 # ============================================================
@@ -864,7 +1029,14 @@ class RuleBasedVerifier:
         self.rules.append(rule)
         return self
 
-    def add_default_rules(self):
+    def add_default_rules(
+        self,
+        *,
+        enable_r5: bool = False,
+        enable_r6: bool = False,
+        r6_threshold: float = 0.3,
+        r6_scorer: Optional[Callable[[Frame, List[Token]], Optional[float]]] = None,
+    ):
         """添加默认规则集"""
         # U1: Unsupported
         self.add_rule(U1_NoCitation())
@@ -888,6 +1060,12 @@ class RuleBasedVerifier:
         self.add_rule(M1_MissingLaterality())
         self.add_rule(M1_MissingFinding())
         self.add_rule(M1_LowConfidenceNoExplanation())
+
+        # Proposal semantic rules (optional; disabled by default to avoid breaking legacy runs).
+        if bool(enable_r5):
+            self.add_rule(R5_AnatomyMismatch())
+        if bool(enable_r6):
+            self.add_rule(R6_SemanticRelevance(min_similarity=float(r6_threshold), scorer=r6_scorer))
 
         return self
 
@@ -953,7 +1131,14 @@ def verify(gen: Generation, tokens: List[Token]) -> List[Issue]:
     return get_default_verifier().verify(gen, tokens)
 
 
-def create_verifier(rules: Optional[List[str]] = None) -> RuleBasedVerifier:
+def create_verifier(
+    rules: Optional[List[str]] = None,
+    *,
+    enable_r5: bool = False,
+    enable_r6: bool = False,
+    r6_threshold: float = 0.3,
+    r6_scorer: Optional[Callable[[Frame, List[Token]], Optional[float]]] = None,
+) -> RuleBasedVerifier:
     """创建自定义 verifier
 
     Args:
@@ -963,7 +1148,12 @@ def create_verifier(rules: Optional[List[str]] = None) -> RuleBasedVerifier:
     Returns:
         RuleBasedVerifier 实例
     """
-    verifier = RuleBasedVerifier().add_default_rules()
+    verifier = RuleBasedVerifier().add_default_rules(
+        enable_r5=bool(enable_r5),
+        enable_r6=bool(enable_r6),
+        r6_threshold=float(r6_threshold),
+        r6_scorer=r6_scorer,
+    )
 
     if rules is not None:
         rule_set = set(rules)
