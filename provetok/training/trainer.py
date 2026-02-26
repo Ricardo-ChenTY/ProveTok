@@ -558,9 +558,7 @@ class Trainer:
 
         path.parent.mkdir(parents=True, exist_ok=True)
         
-        # ==========================================
         # [双卡 A100 修改]: 解包 DDP 模型，防止 key 污染
-        # ==========================================
         pcg_model = self.accelerator.unwrap_model(self.pcg_head) if hasattr(self, "accelerator") else self.pcg_head
         evidence_model = self.accelerator.unwrap_model(self.evidence_head) if hasattr(self, "accelerator") else self.evidence_head
         
